@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Courses — CurriculumMatch{% endblock %}
+{% block page_title %}Courses{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-create' %}" class="btn btn-primary">+ New Course</a>
+{% endblock %}
+{% block content %}
+{% if courses %}
+<div class="grid-auto">
+  {% for course in courses %}
+  <div class="card" style="display:flex;flex-direction:column;gap:12px;">
+    <div>
+      <span class="badge badge-olive" style="margin-bottom:8px;">{{ course.code }}</span>
+      <div style="font-family:var(--syne);font-size:16px;font-weight:700;">{{ course.name }}</div>
+      {% if course.description %}
+      <div class="text-muted text-sm mt-2">{{ course.description|truncatechars:100 }}</div>
+      {% endif %}
+    </div>
+    <div class="flex gap-2 text-sm text-muted">
+      <span>{{ course.modules.count }} module{{ course.modules.count|pluralize }}</span>
+    </div>
+    <div class="flex gap-2" style="margin-top:auto;padding-top:8px;border-top:1px solid var(--rule);">
+      <a href="{% url 'course-detail' course.pk %}" class="btn btn-outline btn-sm">View / Edit</a>
+      <form method="post" action="{% url 'course-delete' course.pk %}" onsubmit="return confirm('Delete {{ course.name }}?')">
+        {% csrf_token %}
+        <button class="btn btn-danger btn-sm">Delete</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">
+  <div class="empty-icon">📚</div>
+  <div class="empty-title">No courses yet</div>
+  <div class="empty-text">Add your first course to start mapping skills.</div>
+  <a href="{% url 'course-create' %}" class="btn btn-primary">+ Add First Course</a>
+</div>
+{% endif %}
+{% endblock %}

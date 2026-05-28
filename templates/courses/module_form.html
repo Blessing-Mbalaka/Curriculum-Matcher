@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Edit Module — CurriculumMatch{% endblock %}
+{% block page_title %}Edit Module{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-detail' module.course.pk %}" class="btn btn-outline">← Back to {{ module.course.name }}</a>
+{% endblock %}
+{% block content %}
+<div style="max-width:700px;">
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="form-group">
+        <label class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+        {{ field }}
+        {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
+        {% if field.errors %}
+          {% for e in field.errors %}<div style="color:var(--rust);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="flex gap-2 mt-4">
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+        <a href="{% url 'course-detail' module.course.pk %}" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('input, textarea, select').forEach(el => el.classList.add('form-control'));
+</script>
+{% endblock %}

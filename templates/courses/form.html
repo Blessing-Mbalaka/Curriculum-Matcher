@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — CurriculumMatch{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-list' %}" class="btn btn-outline">← Back</a>
+{% endblock %}
+{% block content %}
+<div style="max-width:600px;">
+  <div class="card">
+    <form method="post">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="form-group">
+        <label class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+        {{ field }}
+        {% if field.errors %}
+          {% for e in field.errors %}<div style="color:var(--rust);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+        {% endif %}
+      </div>
+      {% endfor %}
+      <div class="flex gap-2 mt-4">
+        <button type="submit" class="btn btn-primary">{{ action }}</button>
+        <a href="{% url 'course-list' %}" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Style all form inputs
+document.querySelectorAll('input, textarea, select').forEach(el => {
+  el.classList.add('form-control');
+});
+</script>
+{% endblock %}

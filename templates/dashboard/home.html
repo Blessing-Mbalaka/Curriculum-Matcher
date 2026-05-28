@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — CurriculumMatch{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block topbar_actions %}
+  <form method="post" action="{% url 'run-analysis' %}">
+    {% csrf_token %}
+    <input type="hidden" name="run_name" value="Run {{ last_run.id|add:1|default:'1' }}">
+    <button type="submit" class="btn btn-primary" id="runBtn">▶ Queue Analysis</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+<div class="grid-4 mb-6">
+  <div class="card">
+    <div class="card-label">Courses</div>
+    <div class="stat-val">{{ course_count }}</div>
+    <div class="stat-sub">registered programmes</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Modules</div>
+    <div class="stat-val">{{ module_count }}</div>
+    <div class="stat-sub">content units</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Job Adverts</div>
+    <div class="stat-val">{{ job_count }}</div>
+    <div class="stat-sub">in database</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Last Analysis</div>
+    {% if last_run %}
+      <div class="mt-2">
+        <span class="badge {% if last_run.status == 'done' %}badge-green{% elif last_run.status == 'error' %}badge-rust{% else %}badge-blue{% endif %}">
+          {{ last_run.status|upper }}
+        </span>
+      </div>
+      <div class="stat-sub mt-2">{{ last_run.name }}<br>{{ last_run.created_at|date:"d M Y · H:i" }}</div>
+    {% else %}
+      <div class="stat-val" style="color:var(--muted); font-size:28px;">—</div>
+      <div class="stat-sub">no runs yet</div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-label">Quick Actions</div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:12px;">
+      <a href="{% url 'course-create' %}" class="btn btn-outline w-full" style="justify-content:center;">+ Add New Course</a>
+      <a href="{% url 'job-upload' %}" class="btn btn-outline w-full" style="justify-content:center;">↑ Import Job Adverts</a>
+      <a href="{% url 'analysis-results' %}" class="btn btn-outline w-full" style="justify-content:center;">◑ View Gap Results</a>
+      <a href="{% url 'task-list' %}" class="btn btn-outline w-full" style="justify-content:center;">
+        ⟳ Background Tasks
+        {% if pending_tasks %}<span class="badge badge-rust">{{ pending_tasks }}</span>{% endif %}
+      </a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">How It Works</div>
+    <div style="margin-top:12px;display:flex;flex-direction:column;gap:16px;">
+      {% for step,desc in steps %}
+      <div class="flex gap-3">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">0{{ forloop.counter }}</span>
+        <div>
+          <div style="font-weight:600;font-size:13.5px;">{{ step }}</div>
+          <div class="text-muted text-sm">{{ desc }}</div>
+        </div>
+      </div>
+      {% empty %}
+      
+      {% endfor %}
+      <div class="flex gap-3">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">01</span>
+        <div><div style="font-weight:600;font-size:13.5px;">Add Courses & Modules</div><div class="text-muted text-sm">Enter your syllabus content per module</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">02</span>
+        <div><div style="font-weight:600;font-size:13.5px;">Import Job Adverts</div><div class="text-muted text-sm">Upload CSV or pull live from Adzuna API</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">03</span>
+        <div><div style="font-weight:600;font-size:13.5px;">Queue Analysis</div><div class="text-muted text-sm">Word2Vec maps skills across both datasets</div></div>
+      </div>
+      <div class="flex gap-3">
+        <span style="font-family:var(--mono);font-size:11px;color:var(--olive);min-width:24px;font-weight:600;">04</span>
+        <div><div style="font-weight:600;font-size:13.5px;">Review Gap Results</div><div class="text-muted text-sm">See match scores and missing skills per course</div></div>
+      </div>
+    
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('runBtn')?.addEventListener('click', function(){
+  this.innerHTML = '<span class="spinner"></span> Queuing…';
+  this.disabled = true;
+});
+{% if last_run and last_run.status == 'running' %}
+setTimeout(() => location.reload(), 5000);
+{% endif %}
+</script>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Import Jobs — CurriculumMatch{% endblock %}
+{% block page_title %}Import Job Adverts{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'job-list' %}" class="btn btn-outline">View All Jobs</a>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:680px;">
+  <div class="tab-bar" id="tabBar">
+    <button class="tab-btn active" onclick="switchTab('csv',this)">CSV Upload</button>
+    <button class="tab-btn" onclick="switchTab('adzuna',this)">Adzuna API</button>
+    <button class="tab-btn" onclick="switchTab('manual',this)">Manual Entry</button>
+  </div>
+
+  <!-- CSV -->
+  <div id="tab-csv">
+    <div class="card">
+      <div class="card-label">Upload CSV File</div>
+      <form method="post" enctype="multipart/form-data" class="mt-4">
+        {% csrf_token %}
+        <input type="hidden" name="upload_type" value="csv">
+        <div class="upload-zone" id="dropZone" onclick="document.getElementById('csvInput').click()">
+          <div class="upload-zone-icon">📄</div>
+          <div class="upload-zone-title" id="fileLabel">Drop CSV here or click to browse</div>
+          <div class="upload-zone-hint">Required columns: <strong>title</strong>, <strong>description</strong></div>
+          <div class="upload-zone-hint mt-2">Optional: company, location, url, salary_min, salary_max</div>
+        </div>
+        <input type="file" name="csv_file" id="csvInput" accept=".csv" style="display:none" onchange="onFileSelect(this)">
+        <button type="submit" class="btn btn-primary mt-4" style="width:100%;justify-content:center;">↑ Import CSV in Background</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Adzuna -->
+  <div id="tab-adzuna" style="display:none">
+    <div class="card">
+      <div class="card-label">Fetch from Adzuna API</div>
+      <p class="text-muted text-sm mt-4 mb-6">
+        Free API at <a href="https://developer.adzuna.com" target="_blank" style="color:var(--olive);font-weight:600;">developer.adzuna.com</a> —
+        set <code>ADZUNA_APP_ID</code> and <code>ADZUNA_APP_KEY</code> in your <code>.env</code>
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="upload_type" value="adzuna">
+        <div class="form-group">
+          <label class="form-label">Job Keywords *</label>
+          <input class="form-control" type="text" name="keyword" placeholder="e.g. data analyst, HR manager, bookkeeper" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Location</label>
+          <input class="form-control" type="text" name="location" value="south africa">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Results</label>
+          <input class="form-control" type="number" name="max_results" value="50" min="1" max="50">
+        </div>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">⟳ Fetch from Adzuna</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Manual -->
+  <div id="tab-manual" style="display:none">
+    <div class="card">
+      <div class="card-label">Paste Job Advert</div>
+      <form method="post" class="mt-4">
+        {% csrf_token %}
+        <input type="hidden" name="upload_type" value="manual">
+        <div class="form-group">
+          <label class="form-label">Job Title *</label>
+          <input class="form-control" type="text" name="title" placeholder="e.g. Junior Data Analyst" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Company</label>
+          <input class="form-control" type="text" name="company" placeholder="e.g. Standard Bank">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Location</label>
+          <input class="form-control" type="text" name="location" placeholder="e.g. Johannesburg, GP">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full Job Description *</label>
+          <textarea class="form-control" name="description" rows="10" placeholder="Paste the complete job description here…" required></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;">+ Add Job</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function switchTab(tab, btn) {
+  ['csv','adzuna','manual'].forEach(t => document.getElementById('tab-'+t).style.display = t===tab?'block':'none');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function onFileSelect(inp) {
+  if (inp.files.length) {
+    document.getElementById('fileLabel').textContent = '✓ ' + inp.files[0].name;
+    document.getElementById('dropZone').style.borderColor = 'var(--olive)';
+    document.getElementById('dropZone').style.background = '#f0faf2';
+  }
+}
+const zone = document.getElementById('dropZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag'));
+zone.addEventListener('drop', e => {
+  e.preventDefault(); zone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) { const dt = new DataTransfer(); dt.items.add(f); document.getElementById('csvInput').files = dt.files; onFileSelect(document.getElementById('csvInput')); }
+});
+</script>
+{% endblock %}

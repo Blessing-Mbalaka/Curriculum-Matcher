@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}Gap Results — CurriculumMatch{% endblock %}
+{% block page_title %}Gap Analysis Results{% endblock %}
+{% block topbar_actions %}
+  <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm" data-results-url="{% url 'analysis-results' %}">
+    {% csrf_token %}
+    <input type="hidden" name="run_name" value="Run {{ runs.count|add:1 }}">
+    <button type="submit" class="btn btn-primary" id="runBtn">▶ Queue Analysis</button>
+  </form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.run-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }
+.run-pill {
+  padding:6px 14px; border-radius:20px; font-size:12px; font-weight:500;
+  text-decoration:none; border:1.5px solid var(--rule); color:var(--muted);
+  transition:all 0.15s;
+}
+.run-pill:hover { border-color:var(--olive); color:var(--olive); }
+.run-pill.active { background:var(--ink); color:var(--lime); border-color:var(--ink); }
+.run-pill.error  { border-color:var(--rust); color:var(--rust); }
+.skill-bar-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--rule); }
+.skill-bar-row:last-child { border-bottom:none; }
+.skill-bar-name { font-size:13px; min-width:140px; }
+.skill-bar-track { flex:1; height:5px; background:var(--soft); border-radius:3px; overflow:hidden; }
+.skill-bar-fill  { height:100%; border-radius:3px; }
+.skill-bar-count { font-family:var(--mono); font-size:11px; color:var(--muted); min-width:28px; text-align:right; }
+.detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
+.detail-panel.open { display:table-row; }
+.queue-progress {
+  display:none; margin-bottom:24px; padding:18px 20px; border:1px solid var(--rule);
+  border-radius:18px; background:linear-gradient(135deg, #fbfaf4, #f4f8ed);
+}
+.queue-progress.active { display:block; }
+.queue-progress-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px; }
+.queue-progress-title { font-weight:600; color:var(--ink); }
+.queue-progress-note { color:var(--muted); font-size:13px; }
+.progress-track { height:10px; background:rgba(32, 40, 31, 0.08); border-radius:999px; overflow:hidden; }
+.progress-fill { height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg, var(--olive), var(--lime)); transition:width 0.35s ease; }
+.progress-meta { display:flex; justify-content:space-between; margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="queue-progress" id="queueProgress" aria-live="polite">
+  <div class="queue-progress-head">
+    <div>
+      <div class="queue-progress-title" id="queueProgressTitle">Analysis queued</div>
+      <div class="queue-progress-note" id="queueProgressNote">Starting background task...</div>
+    </div>
+    <span class="badge badge-blue" id="queueProgressStatus">PENDING</span>
+  </div>
+  <div class="progress-track">
+    <div class="progress-fill" id="queueProgressFill"></div>
+  </div>
+  <div class="progress-meta">
+    <span id="queueProgressStage">Working</span>
+    <span id="queueProgressPct">0%</span>
+  </div>
+</div>
+
+{% if runs %}
+<div class="run-pills">
+  {% for run in runs %}
+  <a href="?run={{ run.id }}" class="run-pill {% if selected_run and selected_run.id == run.id %}active{% endif %} {% if run.status == 'error' %}error{% endif %}">
+    {{ run.name }} · <span style="opacity:0.7;">{{ run.created_at|date:"d/m H:i" }}</span>
+  </a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if selected_run %}
+  {% if selected_run.status == 'running' %}
+  <div class="alert alert-info mb-6"><span class="spinner"></span> &nbsp;Analysis running in background — page refreshes automatically.</div>
+  {% elif selected_run.status == 'error' %}
+  <div class="alert alert-error mb-6">⚠ {{ selected_run.notes }}</div>
+  {% endif %}
+
+  <!-- Skill matrices -->
+  <div class="grid-2 mb-6">
+    <div class="card">
+      <div class="card-label">Job Market — Top Skills Demanded</div>
+      <div style="margin-top:12px;">
+        {% for s in job_skills %}
+        <div class="skill-bar-row">
+          <span class="skill-bar-name">{{ s.skill }}</span>
+          <div class="skill-bar-track">
+            <div class="skill-bar-fill" style="width:{% widthratio s.frequency job_skills.0.frequency 100 %}%;background:var(--olive);"></div>
+          </div>
+          <span class="skill-bar-count">{{ s.frequency }}</span>
+        </div>
+        {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-label">Curriculum — Top Skills Taught</div>
+      <div style="margin-top:12px;">
+        {% for s in course_skills %}
+        <div class="skill-bar-row">
+          <span class="skill-bar-name">{{ s.skill }}</span>
+          <div class="skill-bar-track">
+            <div class="skill-bar-fill" style="width:{% widthratio s.frequency course_skills.0.frequency 100 %}%;background:var(--blue);"></div>
+          </div>
+          <span class="skill-bar-count">{{ s.frequency }}</span>
+        </div>
+        {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Results table -->
+  <div class="section-hd">
+    <h2>Course × Job Match Matrix</h2>
+    <input type="text" class="form-control" id="filterInput" placeholder="Filter by course or job…" style="width:240px;padding:8px 12px;font-size:13px;" oninput="filterRows()">
+  </div>
+
+  <div class="table-wrap">
+    <table id="resultsTable">
+      <thead>
+        <tr>
+          <th>Course</th>
+          <th>Job Title</th>
+          <th>Company</th>
+          <th>Match Score</th>
+          <th>Matched</th>
+          <th>Missing</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        <tr class="result-row" data-course="{{ r.course.name|lower }}" data-job="{{ r.job.title|lower }}">
+          <td>
+            <span class="badge badge-olive">{{ r.course.code }}</span>
+            <span style="margin-left:8px;font-weight:500;">{{ r.course.name }}</span>
+          </td>
+          <td style="font-weight:500;">{{ r.job.title }}</td>
+          <td class="text-muted text-sm">{{ r.job.company|default:"—" }}</td>
+          <td style="min-width:140px;">
+            <div class="score-bar">
+              <div class="bar-track">
+                <div class="bar-fill" style="width:{{ r.similarity_score|floatformat:0 }}0%"></div>
+              </div>
+              <span class="score-pct">{{ r.similarity_score|floatformat:0 }}%</span>
+            </div>
+          </td>
+          <td><span class="badge badge-green">{{ r.matched_skills|length }}</span></td>
+          <td><span class="badge {% if r.missing_skills %}badge-rust{% else %}badge-gray{% endif %}">{{ r.missing_skills|length }}</span></td>
+          <td>
+            <button class="btn btn-outline btn-sm" onclick="toggleDetail('d{{ forloop.counter }}',this)">Details</button>
+          </td>
+        </tr>
+        <tr class="detail-panel" id="d{{ forloop.counter }}">
+          <td colspan="7" style="padding:20px 24px;">
+            <div class="grid-2">
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--olive);margin-bottom:8px;">Matched Skills</div>
+                <div class="chip-list">
+                  {% for sk in r.matched_skills %}<span class="chip chip-match">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}
+                </div>
+              </div>
+              <div>
+                <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--rust);margin-bottom:8px;">Missing from Curriculum</div>
+                <div class="chip-list">
+                  {% for sk in r.missing_skills %}<span class="chip chip-miss">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">Full coverage!</span>{% endfor %}
+                </div>
+              </div>
+            </div>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="7"><div class="empty"><div class="empty-icon">◑</div><div class="empty-title">No results yet</div><div class="empty-text">Queue an analysis to see gap data.</div></div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+{% else %}
+<div class="empty">
+  <div class="empty-icon">◑</div>
+  <div class="empty-title">No analysis runs yet</div>
+  <div class="empty-text">Add courses, import jobs, then click Queue Analysis.</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleDetail(id, btn) {
+  const row = document.getElementById(id);
+  const open = row.classList.toggle('open');
+  btn.textContent = open ? 'Close' : 'Details';
+}
+function filterRows() {
+  const q = document.getElementById('filterInput').value.toLowerCase();
+  document.querySelectorAll('.result-row').forEach(row => {
+    const show = row.dataset.course.includes(q) || row.dataset.job.includes(q);
+    row.style.display = show ? '' : 'none';
+    const next = row.nextElementSibling;
+    if (next?.classList.contains('detail-panel')) next.style.display = show ? '' : 'none';
+  });
+}
+document.getElementById('runBtn')?.addEventListener('click', function(){
+  this.innerHTML = '<span class="spinner"></span> Queuing…'; this.disabled = true;
+});
+const queueForm = document.getElementById('analysisQueueForm');
+const runBtn = document.getElementById('runBtn');
+const progressPanel = document.getElementById('queueProgress');
+const progressTitle = document.getElementById('queueProgressTitle');
+const progressNote = document.getElementById('queueProgressNote');
+const progressStatus = document.getElementById('queueProgressStatus');
+const progressFill = document.getElementById('queueProgressFill');
+const progressStage = document.getElementById('queueProgressStage');
+const progressPct = document.getElementById('queueProgressPct');
+
+function setQueueProgress({ status = 'PENDING', progress = 0, notes = '' }) {
+  const pct = Math.max(0, Math.min(100, Number(progress) || 0));
+  progressPanel?.classList.add('active');
+  progressFill.style.width = `${pct}%`;
+  progressPct.textContent = `${pct}%`;
+  progressStatus.textContent = status;
+  progressStatus.className = `badge ${
+    status === 'SUCCESS' ? 'badge-green' :
+    status === 'FAILURE' ? 'badge-rust' :
+    status === 'STARTED' ? 'badge-blue' : 'badge-gray'
+  }`;
+  progressTitle.textContent = status === 'SUCCESS'
+    ? 'Analysis complete'
+    : status === 'FAILURE'
+      ? 'Analysis failed'
+      : 'Analysis running';
+  progressNote.textContent = notes || 'Working through the analysis pipeline...';
+  progressStage.textContent = status === 'SUCCESS' ? 'Refreshing results' : status;
+}
+
+async function pollTask(statusUrl) {
+  const response = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+  const data = await response.json();
+  setQueueProgress(data);
+
+  if (data.status === 'SUCCESS') {
+    setTimeout(() => window.location.assign(queueForm.dataset.resultsUrl), 900);
+    return;
+  }
+  if (data.status === 'FAILURE') {
+    runBtn.disabled = false;
+    runBtn.innerHTML = 'Try Queue Analysis Again';
+    return;
+  }
+  setTimeout(() => pollTask(statusUrl), 1200);
+}
+
+async function queueAnalysis(event) {
+  if (!window.fetch) return;
+  event.preventDefault();
+  runBtn.innerHTML = '<span class="spinner"></span> Queuing...';
+  runBtn.disabled = true;
+  setQueueProgress({ status: 'PENDING', progress: 0, notes: 'Queueing analysis task...' });
+
+  try {
+    const response = await fetch(queueForm.action, {
+      method: 'POST',
+      body: new FormData(queueForm),
+      credentials: 'same-origin',
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'Accept': 'application/json',
+      },
+    });
+    if (!response.ok) throw new Error('Could not queue analysis.');
+    const data = await response.json();
+    setQueueProgress({ status: 'STARTED', progress: 1, notes: 'Analysis task started.' });
+    pollTask(data.status_url);
+  } catch (error) {
+    setQueueProgress({ status: 'FAILURE', progress: 0, notes: error.message });
+    runBtn.disabled = false;
+    runBtn.innerHTML = 'Try Queue Analysis Again';
+  }
+}
+
+queueForm?.addEventListener('submit', queueAnalysis);
+runBtn?.addEventListener('click', queueAnalysis);
+{% if selected_run and selected_run.status == 'running' %}
+setTimeout(() => location.reload(), 5000);
+{% endif %}
+</script>
+{% endblock %}

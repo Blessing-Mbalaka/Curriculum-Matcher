@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ course.name }} — CurriculumMatch{% endblock %}
+{% block page_title %}{{ course.code }} — {{ course.name }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-edit' course.pk %}" class="btn btn-outline">Edit Course</a>
+  <a href="{% url 'course-list' %}" class="btn btn-outline">← All Courses</a>
+{% endblock %}
+
+{% block content %}
+{% if course.description %}
+<p class="text-muted mb-6" style="font-size:14px;">{{ course.description }}</p>
+{% endif %}
+
+<div class="grid-2" style="align-items:start;">
+  <!-- Modules list -->
+  <div>
+    <div class="section-hd">
+      <h2>Modules <span class="badge badge-gray">{{ modules.count }}</span></h2>
+    </div>
+
+    {% if modules %}
+      {% for mod in modules %}
+      <div class="card mb-4" style="padding:18px 20px;">
+        <div class="flex" style="justify-content:space-between;align-items:flex-start;gap:12px;">
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:14px;">{{ mod.name }}</div>
+            <div class="text-muted text-sm mt-2" style="white-space:pre-wrap;max-height:80px;overflow:hidden;">{{ mod.content|truncatechars:200 }}</div>
+            {% if mod.skills_extracted %}
+            <div class="chip-list mt-2">
+              {% for skill in mod.skills_extracted|slice:":6" %}
+                <span class="chip chip-match">{{ skill }}</span>
+              {% endfor %}
+              {% if mod.skills_extracted|length > 6 %}
+                <span class="chip">+{{ mod.skills_extracted|length|add:"-6" }} more</span>
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          <div class="flex gap-2" style="flex-shrink:0;">
+            <a href="{% url 'module-edit' mod.pk %}" class="btn btn-outline btn-sm">Edit</a>
+            <form method="post" action="{% url 'module-delete' mod.pk %}" onsubmit="return confirm('Delete this module?')">
+              {% csrf_token %}
+              <button class="btn btn-danger btn-sm">✕</button>
+            </form>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="card" style="text-align:center;padding:40px;color:var(--muted);">
+        <div style="font-size:32px;margin-bottom:10px;">📄</div>
+        <div style="font-weight:600;margin-bottom:6px;">No modules yet</div>
+        <div class="text-sm">Add your first module using the form →</div>
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Add module form -->
+  <div>
+    <div class="section-hd"><h2>Add Module</h2></div>
+    <div class="card">
+      <form method="post" action="{% url 'module-create' course.pk %}">
+        {% csrf_token %}
+        {% for field in module_form %}
+        <div class="form-group">
+          <label class="form-label">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+          {{ field }}
+          {% if field.help_text %}<div class="form-hint">{{ field.help_text }}</div>{% endif %}
+          {% if field.errors %}
+            {% for e in field.errors %}<div style="color:var(--rust);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+          {% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-primary w-full" style="justify-content:center;margin-top:8px;">+ Add Module</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.querySelectorAll('input, textarea, select').forEach(el => {
+  el.classList.add('form-control');
+});
+</script>
+{% endblock %}

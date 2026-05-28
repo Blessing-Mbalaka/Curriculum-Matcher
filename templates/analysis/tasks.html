@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Background Tasks — CurriculumMatch{% endblock %}
+{% block page_title %}Background Tasks{% endblock %}
+{% block extra_css %}
+<style>
+.task-progress { min-width:160px; }
+.task-progress-track { height:8px; background:var(--soft); border-radius:999px; overflow:hidden; }
+.task-progress-fill { height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg, var(--olive), var(--lime)); transition:width 0.35s ease; }
+.task-progress-meta { display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>Task</th>
+        <th>Status</th>
+        <th>Progress</th>
+        <th>Started</th>
+        <th>Finished</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for task in tasks %}
+      <tr data-task-row data-status-url="{% url 'task-status-api' task.id %}">
+        <td style="font-weight:500;">{{ task.run_name }}</td>
+        <td>
+          <span data-task-status class="badge
+            {% if task.status == 'SUCCESS' %}badge-green
+            {% elif task.status == 'FAILURE' %}badge-rust
+            {% elif task.status == 'STARTED' %}badge-blue
+            {% else %}badge-gray{% endif %}">
+            {{ task.status }}
+          </span>
+        </td>
+        <td class="task-progress">
+          <div class="task-progress-track">
+            <div class="task-progress-fill" data-task-progress-fill style="width:{{ task.progress }}%;"></div>
+          </div>
+          <div class="task-progress-meta">
+            <span data-task-progress-label>{{ task.progress }}%</span>
+            <span>{% if task.status == 'SUCCESS' %}Done{% elif task.status == 'FAILURE' %}Stopped{% else %}Working{% endif %}</span>
+          </div>
+        </td>
+        <td class="text-sm text-muted">{{ task.created_at|date:"d M Y H:i" }}</td>
+        <td class="text-sm text-muted">{{ task.finished_at|date:"d M Y H:i"|default:"—" }}</td>
+        <td class="text-sm text-muted">{{ task.notes|truncatechars:80|default:"—" }}</td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6">
+          <div class="empty">
+            <div class="empty-icon">⟳</div>
+            <div class="empty-title">No tasks yet</div>
+            <div class="empty-text">Tasks appear here when you import jobs or run analysis.</div>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if is_paginated %}
+<div class="pagination">
+  {% if page_obj.has_previous %}<a href="?page={{ page_obj.previous_page_number }}">← Prev</a>{% endif %}
+  <span class="current">{{ page_obj.number }}</span>
+  <span class="text-muted">of {{ page_obj.paginator.num_pages }}</span>
+  {% if page_obj.has_next %}<a href="?page={{ page_obj.next_page_number }}">Next →</a>{% endif %}
+</div>
+{% endif %}
+{% if has_running %}
+<p class="text-sm text-muted mt-4">Auto-refreshing every 5 seconds…</p>
+{% endif %}
+{% endblock %}
+{% block extra_js %}
+<script>
+function statusClass(status) {
+  if (status === 'SUCCESS') return 'badge badge-green';
+  if (status === 'FAILURE') return 'badge badge-rust';
+  if (status === 'STARTED') return 'badge badge-blue';
+  return 'badge badge-gray';
+}
+
+function updateTaskRow(row, data) {
+  const pct = Math.max(0, Math.min(100, Number(data.progress) || 0));
+  const status = row.querySelector('[data-task-status]');
+  const fill = row.querySelector('[data-task-progress-fill]');
+  const label = row.querySelector('[data-task-progress-label]');
+  const notes = row.querySelector('[data-task-notes]');
+
+  status.textContent = data.status;
+  status.className = statusClass(data.status);
+  fill.style.width = `${pct}%`;
+  label.textContent = `${pct}%`;
+  if (notes) notes.textContent = data.notes || '-';
+}
+
+function pollTaskRow(row) {
+  fetch(row.dataset.statusUrl, { headers: { 'Accept': 'application/json' } })
+    .then(response => response.json())
+    .then(data => {
+      updateTaskRow(row, data);
+      if (data.status === 'PENDING' || data.status === 'STARTED') {
+        setTimeout(() => pollTaskRow(row), 1500);
+      } else if (data.status === 'SUCCESS') {
+        setTimeout(() => location.reload(), 1200);
+      }
+    })
+    .catch(() => setTimeout(() => pollTaskRow(row), 3000));
+}
+
+{% if has_running %}
+document.querySelectorAll('[data-task-row]').forEach(row => pollTaskRow(row));
+{% endif %}
+</script>
+{% endblock %}
