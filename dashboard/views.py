@@ -178,13 +178,17 @@ class JobDeleteView(View):
 class RunAnalysisView(View):
     def post(self, request):
         name = request.POST.get("run_name", "Analysis Run")
+        max_jobs = bounded_int(request.POST.get("max_jobs"), 0, 0, 100000) or None
+        if max_jobs and "Smoke" not in name:
+            name = f"Smoke {name}"
         record = TaskRecord.objects.create(run_name=name)
-        run_gap_analysis_task(run_name=name, record_id=record.id)   # fires thread
+        run_gap_analysis_task(run_name=name, record_id=record.id, max_jobs=max_jobs)   # fires thread
         if request.headers.get("x-requested-with") == "XMLHttpRequest":
             return JsonResponse({
                 "task_id": record.id,
                 "status_url": reverse("task-status-api", args=[record.id]),
                 "task_url": reverse("task-list"),
+                "max_jobs": max_jobs,
             })
         messages.success(request, f"Analysis '{name}' started in the background.")
         return redirect("task-list")

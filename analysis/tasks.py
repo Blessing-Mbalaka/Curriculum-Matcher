@@ -50,14 +50,14 @@ def _run_in_thread(fn, *args, **kwargs):
 # Task functions (called in threads)
 # ---------------------------------------------------------------------------
 
-def _do_gap_analysis(run_name, record_id):
+def _do_gap_analysis(run_name, record_id, max_jobs=None):
     from analysis.services import run_gap_analysis
     _mark(record_id, "STARTED", "Preparing analysis...", 1)
     try:
         def report(percent, notes):
             _mark(record_id, "STARTED", notes, percent)
 
-        run = run_gap_analysis(run_name=run_name, progress_callback=report)
+        run = run_gap_analysis(run_name=run_name, progress_callback=report, max_jobs=max_jobs)
         _mark(record_id, "SUCCESS", f"Done. AnalysisRun ID: {run.id}", 100)
     except Exception as exc:
         logger.error(f"Gap analysis failed: {exc}", exc_info=True)
@@ -255,9 +255,9 @@ def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, r
 # Public API — drop-in replacements for the old Celery .delay() calls
 # ---------------------------------------------------------------------------
 
-def run_gap_analysis_task(run_name="Analysis Run", record_id=None):
+def run_gap_analysis_task(run_name="Analysis Run", record_id=None, max_jobs=None):
     """Start gap analysis in a background thread."""
-    _run_in_thread(_do_gap_analysis, run_name, record_id)
+    _run_in_thread(_do_gap_analysis, run_name, record_id, max_jobs)
 
 
 def import_csv_task(csv_bytes, record_id=None):

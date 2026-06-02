@@ -5,6 +5,7 @@
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}
     <input type="hidden" name="run_name" value="Run {{ last_run.id|add:1|default:'1' }}">
+    <button type="submit" class="btn btn-outline" name="max_jobs" value="3" id="smokeBtn">Smoke</button>
     <button type="submit" class="btn btn-primary" id="runBtn">Queue Analysis</button>
   </form>
 {% endblock %}
@@ -251,6 +252,9 @@
 <script>
 const metricsUrl = "{% url 'dashboard-metrics' %}";
 const networkUrl = "{% url 'similarity-network' %}";
+const analysisQueueForm = document.getElementById('analysisQueueForm');
+const runBtn = document.getElementById('runBtn');
+const smokeBtn = document.getElementById('smokeBtn');
 const liveForm = document.getElementById('livePipelineForm');
 const startJobsOnlyBtn = document.getElementById('startJobsOnlyBtn');
 const startLiveBtn = document.getElementById('startLiveBtn');
@@ -475,6 +479,81 @@ async function pollLiveTask() {
   refreshNetwork();
 }
 
+function setAnalysisButtonsDisabled(disabled) {
+  if (runBtn) runBtn.disabled = disabled;
+  if (smokeBtn) smokeBtn.disabled = disabled;
+}
+
+function resetAnalysisButtons() {
+  setAnalysisButtonsDisabled(false);
+  if (runBtn) runBtn.innerHTML = 'Queue Analysis';
+  if (smokeBtn) smokeBtn.innerHTML = 'Smoke';
+}
+
+async function pollQueuedAnalysis(statusUrl, activeButton) {
+  const response = await fetch(statusUrl, { headers: { 'Accept':'application/json' } });
+  const task = await response.json();
+  activeButton.innerHTML = `<span class="spinner"></span> ${task.status}`;
+  if (task.status === 'STARTED' || task.status === 'PENDING') {
+    setTimeout(() => pollQueuedAnalysis(statusUrl, activeButton), 1500);
+    refreshMetrics();
+    return;
+  }
+  resetAnalysisButtons();
+  refreshMetrics();
+  refreshNetwork();
+  if (task.status === 'SUCCESS') {
+    window.showToast?.({
+      title: 'Database analysis complete',
+      body: task.notes || 'Queue Analysis scored the current courses and jobs in the database.',
+      type: 'success',
+      timeout: 7000,
+    });
+  } else if (task.status === 'FAILURE') {
+    window.showToast?.({
+      title: 'Database analysis failed',
+      body: `${task.notes || 'The task failed.'}${task.debug_hint ? ' ' + task.debug_hint : ''}`,
+      type: 'error',
+      timeout: 12000,
+    });
+  }
+}
+
+async function queueDashboardAnalysis(event) {
+  if (!analysisQueueForm || !runBtn) return;
+  event.preventDefault();
+  const activeButton = event.submitter || runBtn;
+  const formData = new FormData(analysisQueueForm);
+  if (activeButton.name && activeButton.value) formData.set(activeButton.name, activeButton.value);
+  setAnalysisButtonsDisabled(true);
+  activeButton.innerHTML = '<span class="spinner"></span> Queuing';
+  try {
+    const response = await fetch(analysisQueueForm.action, {
+      method:'POST',
+      body:formData,
+      credentials:'same-origin',
+      headers:{ 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' }
+    });
+    if (!response.ok) throw new Error('Could not queue database analysis.');
+    const data = await response.json();
+    window.showToast?.({
+      title: data.max_jobs ? 'Smoke analysis queued' : 'Database analysis queued',
+      body: data.max_jobs ? `Using current courses and ${data.max_jobs} job adverts from the database.` : 'Using the courses, modules, and jobs currently stored in the database.',
+      type: 'info',
+      timeout: 6000,
+    });
+    pollQueuedAnalysis(data.status_url, activeButton);
+  } catch (error) {
+    resetAnalysisButtons();
+    window.showToast?.({
+      title: 'Could not queue analysis',
+      body: error.message,
+      type: 'error',
+      timeout: 9000,
+    });
+  }
+}
+
 async function startDashboardTask(url, button, startingLabel, enableStop) {
   if (!url || !button) return;
   button.disabled = true;
@@ -527,7 +606,7 @@ stopLiveBtn.addEventListener('click', async () => {
   pollLiveTask();
 });
 
-document.getElementById('runBtn')?.addEventListener('click', function(){ this.innerHTML = '<span class="spinner"></span> Queuing'; this.disabled = true; });
+analysisQueueForm?.addEventListener('submit', queueDashboardAnalysis);
 refreshMetrics();
 refreshNetwork();
 pollLiveTask();

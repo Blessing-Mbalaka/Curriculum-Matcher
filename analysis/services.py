@@ -14,7 +14,7 @@ from .spacyskillextraction import SpacySkillExtractor
 logger = logging.getLogger(__name__)
 
 
-def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> AnalysisRun:
+def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max_jobs=None) -> AnalysisRun:
     def report(percent: int, message: str) -> None:
         if progress_callback:
             progress_callback(percent, message)
@@ -28,7 +28,10 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
     try:
         report(5, "Loading courses and job adverts...")
         courses = list(Course.objects.prefetch_related("modules").all())
-        jobs = list(JobAdvert.objects.all())
+        jobs_queryset = JobAdvert.objects.all()
+        if max_jobs:
+            jobs_queryset = jobs_queryset[:max(1, int(max_jobs))]
+        jobs = list(jobs_queryset)
 
         if not courses:
             raise ValueError("No courses found. Add at least one course with modules first.")
@@ -46,7 +49,8 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None) -> 
 
         all_texts = list(module_map.values()) + list(job_map.values())
         logger.info("Preparing semantic scorer on %s documents...", len(all_texts))
-        report(12, f"Preparing semantic scorer on {len(all_texts)} documents...")
+        limit_note = f" Smoke limit: {len(jobs)} job adverts." if max_jobs else ""
+        report(12, f"Preparing semantic scorer on {len(all_texts)} documents...{limit_note}")
         scorer = SemanticSimilarityService(
             all_texts,
             progress_callback=lambda message: report(14, message),
