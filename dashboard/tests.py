@@ -139,8 +139,12 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Filter network by job advert")
         self.assertContains(response, "Strategy Manager")
         self.assertContains(response, "id=\"network3dBtn\"")
+        self.assertContains(response, "id=\"networkCrosstabBtn\"")
+        self.assertContains(response, "Cross-tab")
         self.assertContains(response, "3d-force-graph")
         self.assertContains(response, "id=\"similarityNetwork3d\"")
+        self.assertContains(response, "id=\"similarityCrosstab\"")
+        self.assertContains(response, "network-canvas-wrap is-3d")
 
     def test_results_page_renders_heatmap_scatter_and_suggestions(self):
         self.course.university_name = "University of Johannesburg"
