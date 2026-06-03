@@ -12,36 +12,80 @@
 {% block extra_css %}
 <style>
 .run-pills { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:28px; }
-.run-pill {
-  padding:6px 14px; border-radius:20px; font-size:12px; font-weight:500;
-  text-decoration:none; border:1.5px solid var(--rule); color:var(--muted);
-  transition:all 0.15s;
-}
+.run-pill { padding:6px 14px; border-radius:20px; font-size:12px; font-weight:500; text-decoration:none; border:1.5px solid var(--rule); color:var(--muted); transition:all .15s; }
 .run-pill:hover { border-color:var(--olive); color:var(--olive); }
-.run-pill.active { background:var(--ink); color:var(--lime); border-color:var(--ink); }
-.run-pill.error  { border-color:var(--rust); color:var(--rust); }
-.skill-bar-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--rule); }
-.skill-bar-row:last-child { border-bottom:none; }
-.skill-bar-name { font-size:13px; min-width:140px; }
-.skill-bar-track { flex:1; height:5px; background:var(--soft); border-radius:3px; overflow:hidden; }
-.skill-bar-fill  { height:100%; border-radius:3px; }
-.skill-bar-count { font-family:var(--mono); font-size:11px; color:var(--muted); min-width:28px; text-align:right; }
-.detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
-.detail-panel.open { display:table-row; }
-.queue-progress {
-  display:none; margin-bottom:24px; padding:18px 20px; border:1px solid var(--rule);
-  border-radius:18px; background:linear-gradient(135deg, #fbfaf4, #f4f8ed);
-}
+.run-pill.active { background:var(--ink); color:#fff; border-color:var(--ink); }
+.run-pill.error { border-color:var(--rust); color:var(--rust); }
+.queue-progress { display:none; margin-bottom:24px; padding:18px 20px; border:1px solid var(--rule); border-radius:8px; background:linear-gradient(135deg, #fff, var(--uj-orange-soft)); }
 .queue-progress.active { display:block; }
 .queue-progress-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px; }
-.queue-progress-title { font-weight:600; color:var(--ink); }
+.queue-progress-title { font-weight:700; color:var(--ink); }
 .queue-progress-note { color:var(--muted); font-size:13px; }
-.progress-track { height:10px; background:rgba(32, 40, 31, 0.08); border-radius:999px; overflow:hidden; }
-.progress-fill { height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg, var(--olive), var(--lime)); transition:width 0.35s ease; }
-.progress-meta { display:flex; justify-content:space-between; margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
-.results-visuals { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:24px; }
-.chart-box { height:260px; }
-@media (max-width:900px) { .results-visuals { grid-template-columns:1fr; } }
+.progress-track { height:10px; background:rgba(32,40,31,.08); border-radius:999px; overflow:hidden; }
+.progress-fill { height:100%; width:0%; border-radius:999px; transition:width .35s ease; }
+.progress-meta { display:flex; justify-content:space-between; margin-top:8px; font-family:var(--mono); font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; }
+.results-filters { display:grid; grid-template-columns:minmax(220px,1fr) 160px auto; gap:12px; align-items:end; margin-bottom:20px; }
+.results-tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--rule); }
+.results-tab { border:1px solid var(--rule); border-bottom:0; background:#fff; color:var(--muted); padding:9px 15px; border-radius:8px 8px 0 0; cursor:pointer; font-weight:700; font-size:12px; }
+.results-tab.active { background:#0b0b0b; color:#fff; border-color:#0b0b0b; }
+.tab-panel { display:none; }
+.tab-panel.active { display:block; }
+.results-visuals { display:grid; grid-template-columns:1fr; gap:20px; margin-bottom:24px; }
+.chart-box { height:380px; }
+.heatmap-wrap { overflow:auto; padding-bottom:6px; }
+.heatmap-table { min-width:760px; border-collapse:separate; border-spacing:3px; width:100%; background:transparent; }
+.heatmap-table th { background:transparent; border:0; text-align:center; padding:8px 6px; }
+.heatmap-table td { border:0; padding:0; background:transparent; }
+.heatmap-label { min-width:240px; font-weight:700; color:var(--ink); }
+.heatmap-school { display:block; font-weight:400; color:var(--muted); font-size:11px; margin-top:2px; }
+.heat-cell { min-width:82px; height:46px; border-radius:4px; display:grid; place-items:center; border:1px solid rgba(11,11,11,.06); background:rgba(245,130,32, calc(.08 + var(--i) * .72)); color:#111; font-family:var(--mono); font-size:12px; }
+.heat-cell.empty { background:#f1f3f5; color:#9aa0a6; }
+.heatmap-legend { display:flex; align-items:center; gap:10px; margin-top:10px; color:var(--muted); font-size:12px; }
+.legend-ramp { width:160px; height:10px; border-radius:999px; background:linear-gradient(90deg,#f1f3f5,#ffd2aa,#f58220,#974800); }
+.skill-bar-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--rule); }
+.skill-bar-row:last-child { border-bottom:0; }
+.skill-bar-name { font-size:13px; min-width:140px; }
+.skill-bar-track { flex:1; height:5px; background:var(--soft); border-radius:3px; overflow:hidden; }
+.skill-bar-fill { height:100%; border-radius:3px; }
+.skill-bar-count { font-family:var(--mono); font-size:11px; color:var(--muted); min-width:28px; text-align:right; }
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:12px; margin-bottom:18px; }
+.summary-card { border:1px solid var(--rule); border-radius:8px; padding:14px; background:#fff; }
+.summary-card.is-risk { border-color:#efc1bb; background:#fff7f4; }
+.summary-score { font-family:var(--display); font-size:26px; font-weight:800; margin-top:8px; }
+.recommendation-list { display:grid; gap:12px; }
+.recommendation { border-left:4px solid var(--uj-orange); background:#fff; border-radius:8px; padding:14px 16px; border-top:1px solid var(--rule); border-right:1px solid var(--rule); border-bottom:1px solid var(--rule); }
+.recommendation.is-risk { border-left-color:var(--rust); }
+.recommendation-title { font-weight:800; margin-bottom:4px; }
+.mini-skill-matrix { margin-top:18px; border-top:1px solid var(--rule); padding-top:16px; display:grid; gap:10px; }
+.mini-skill-row { position:relative; display:grid; grid-template-columns:minmax(120px,1fr) 1.2fr 72px; gap:10px; align-items:center; }
+.mini-skill-name { font-size:12px; font-weight:800; color:var(--ink); }
+.mini-skill-track { height:8px; background:var(--soft); border-radius:999px; overflow:hidden; }
+.mini-skill-gap { height:100%; background:linear-gradient(90deg,var(--uj-orange),var(--rust)); border-radius:999px; min-width:4px; }
+.mini-skill-meta { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:right; }
+.mini-skill-counts { grid-column:2 / 4; display:flex; gap:10px; color:var(--muted); font-size:11px; }
+.mini-skill-help {
+  display:none;
+  position:absolute;
+  left:0;
+  right:0;
+  top:calc(100% + 6px);
+  z-index:12;
+  padding:12px 14px;
+  border:1px solid #ffbd80;
+  border-radius:8px;
+  background:#fffaf5;
+  box-shadow:0 16px 36px rgba(11,11,11,.14);
+  color:var(--ink);
+  font-size:12px;
+  line-height:1.5;
+}
+.mini-skill-row:hover .mini-skill-help,
+.mini-skill-row:focus-within .mini-skill-help { display:block; }
+.mini-skill-help code { font-family:var(--mono); font-size:11px; color:#9a4a08; }
+.detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
+.detail-panel.open { display:table-row; }
+@media (max-width:1000px) { .results-visuals, .results-filters { grid-template-columns:1fr; } }
+@media (max-width:640px) { .mini-skill-row { grid-template-columns:1fr; } .mini-skill-counts { grid-column:auto; } .mini-skill-meta { text-align:left; } }
 </style>
 {% endblock %}
 
@@ -54,20 +98,15 @@
     </div>
     <span class="badge badge-blue" id="queueProgressStatus">PENDING</span>
   </div>
-  <div class="progress-track">
-    <div class="progress-fill" id="queueProgressFill"></div>
-  </div>
-  <div class="progress-meta">
-    <span id="queueProgressStage">Working</span>
-    <span id="queueProgressPct">0%</span>
-  </div>
+  <div class="progress-track"><div class="progress-fill" id="queueProgressFill"></div></div>
+  <div class="progress-meta"><span id="queueProgressStage">Working</span><span id="queueProgressPct">0%</span></div>
 </div>
 
 {% if runs %}
 <div class="run-pills">
   {% for run in runs %}
   <a href="?run={{ run.id }}" class="run-pill {% if selected_run and selected_run.id == run.id %}active{% endif %} {% if run.status == 'error' %}error{% endif %}">
-    {{ run.name }} · <span style="opacity:0.7;">{{ run.created_at|date:"d/m H:i" }}</span>
+    {{ run.name }} - <span style="opacity:.7;">{{ run.created_at|date:"d/m H:i" }}</span>
   </a>
   {% endfor %}
 </div>
@@ -80,132 +119,200 @@
   <div class="alert alert-error mb-6">{{ selected_run.notes }}</div>
   {% endif %}
 
-  <div class="results-visuals">
-    <div class="card">
-      <div class="section-hd">
-        <h2>Cosine Score Spread</h2>
-        <span class="graph-insight">
-          <button class="graph-insight-btn" type="button" aria-label="Explain cosine score spread"></button>
-          <span class="graph-insight-popover">
-            <span class="graph-insight-title">Score reading</span>
-            <span class="graph-insight-body" id="resultsScoreInsight">Waiting for score data.</span>
-          </span>
-        </span>
-      </div>
-      <div class="chart-box"><canvas id="resultsScoreChart"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="section-hd">
-        <h2>Matched vs Missing Skills</h2>
-        <span class="graph-insight">
-          <button class="graph-insight-btn" type="button" aria-label="Explain matched versus missing skills"></button>
-          <span class="graph-insight-popover">
-            <span class="graph-insight-title">Gap reading</span>
-            <span class="graph-insight-body" id="gapInsight">Waiting for skill gap data.</span>
-          </span>
-        </span>
-      </div>
-      <div class="chart-box"><canvas id="gapChart"></canvas></div>
-    </div>
-  </div>
-
-  <div class="grid-2 mb-6">
-    <div class="card">
-      <div class="card-label">Job Market - Top Skills Demanded</div>
-      <div style="margin-top:12px;">
-        {% for s in job_skills %}
-        <div class="skill-bar-row">
-          <span class="skill-bar-name">{{ s.skill }}</span>
-          <div class="skill-bar-track">
-            <div class="skill-bar-fill" style="width:{% widthratio s.frequency job_skills.0.frequency 100 %}%;background:var(--olive);"></div>
-          </div>
-          <span class="skill-bar-count">{{ s.frequency }}</span>
-        </div>
-        {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-label">Curriculum - Top Skills Taught</div>
-      <div style="margin-top:12px;">
-        {% for s in course_skills %}
-        <div class="skill-bar-row">
-          <span class="skill-bar-name">{{ s.skill }}</span>
-          <div class="skill-bar-track">
-            <div class="skill-bar-fill" style="width:{% widthratio s.frequency course_skills.0.frequency 100 %}%;background:var(--blue);"></div>
-          </div>
-          <span class="skill-bar-count">{{ s.frequency }}</span>
-        </div>
-        {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
-      </div>
-    </div>
-  </div>
-
-  <!-- Results table -->
-  <div class="section-hd">
-    <h2>Course to Job Match Matrix</h2>
-    <input type="text" class="form-control" id="filterInput" placeholder="Filter by course or job" style="width:240px;padding:8px 12px;font-size:13px;" oninput="filterRows()">
-  </div>
-
-  <div class="table-wrap">
-    <table id="resultsTable">
-      <thead>
-        <tr>
-          <th>Course</th>
-          <th>Job Title</th>
-          <th>Company</th>
-          <th>Match Score</th>
-          <th>Matched</th>
-          <th>Missing</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for r in results %}
-        <tr class="result-row" data-course="{{ r.course.name|lower }}" data-job="{{ r.job.title|lower }}">
-          <td>
-            <span class="badge badge-olive">{{ r.course.code }}</span>
-            <span style="margin-left:8px;font-weight:500;">{{ r.course.name }}</span>
-          </td>
-          <td style="font-weight:500;">{{ r.job.title }}</td>
-          <td class="text-muted text-sm">{{ r.job.company|default:"None" }}</td>
-          <td style="min-width:140px;">
-            <div class="score-bar">
-              <div class="bar-track">
-                <div class="bar-fill" style="width:{{ r.similarity_percent }}%"></div>
-              </div>
-              <span class="score-pct">{{ r.similarity_percent }}%</span>
-            </div>
-            <div class="text-muted text-sm text-mono mt-2">cosine {{ r.similarity_score|floatformat:4 }}</div>
-          </td>
-          <td><span class="badge badge-green">{{ r.matched_skills|length }}</span></td>
-          <td><span class="badge {% if r.missing_skills %}badge-rust{% else %}badge-gray{% endif %}">{{ r.missing_skills|length }}</span></td>
-          <td>
-            <button class="btn btn-outline btn-sm" onclick="toggleDetail('d{{ forloop.counter }}',this)">Details</button>
-          </td>
-        </tr>
-        <tr class="detail-panel" id="d{{ forloop.counter }}">
-          <td colspan="7" style="padding:20px 24px;">
-            <div class="grid-2">
-              <div>
-                <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--olive);margin-bottom:8px;">Matched Skills</div>
-                <div class="chip-list">
-                  {% for sk in r.matched_skills %}<span class="chip chip-match">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}
-                </div>
-              </div>
-              <div>
-                <div style="font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--rust);margin-bottom:8px;">Missing from Curriculum</div>
-                <div class="chip-list">
-                  {% for sk in r.missing_skills %}<span class="chip chip-miss">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">Full coverage!</span>{% endfor %}
-                </div>
-              </div>
-            </div>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7"><div class="empty"><div class="empty-title">No results yet</div><div class="empty-text">Queue an analysis to see gap data.</div></div></td></tr>
+  <form method="get" class="card results-filters">
+    <input type="hidden" name="run" value="{{ selected_run.id }}">
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">School</label>
+      <select name="school" class="form-control">
+        <option value="">All schools</option>
+        {% for school in schools %}
+        <option value="{{ school }}" {% if selected_school == school %}selected{% endif %}>{{ school }}</option>
         {% endfor %}
-      </tbody>
-    </table>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0;">
+      <label class="form-label">Mismatch threshold</label>
+      <input class="form-control" name="threshold" type="number" min="0" max="100" value="{{ threshold }}">
+    </div>
+    <div class="flex gap-2">
+      <button class="btn btn-primary" type="submit">Apply</button>
+      <a href="?run={{ selected_run.id }}" class="btn btn-outline">Clear</a>
+    </div>
+  </form>
+
+  <div class="results-tabs">
+    <button class="results-tab active" type="button" data-tab="visualsTab">Visuals</button>
+    <button class="results-tab" type="button" data-tab="suggestionsTab">Suggestions</button>
+    <button class="results-tab" type="button" data-tab="matrixTab">Matrix</button>
+  </div>
+
+  <div class="tab-panel active" id="visualsTab">
+    <div class="results-visuals">
+      <div class="card">
+        <div class="section-hd">
+          <h2>Course Alignment Heatmap</h2>
+          <span class="badge badge-gold">Score bands</span>
+        </div>
+        <div class="heatmap-wrap">
+          <table class="heatmap-table">
+            <thead>
+              <tr>
+                <th></th>
+                {% for band in score_bands %}<th>{{ band }}%</th>{% endfor %}
+                <th>Avg</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in heatmap_rows %}
+              <tr>
+                <td class="heatmap-label">{{ row.course.code|default:row.course.name }}<span class="heatmap-school">{{ row.school }}</span></td>
+                {% for cell in row.cells %}
+                <td><div class="heat-cell {% if not cell.count %}empty{% endif %}" style="--i:{{ cell.intensity }};">{{ cell.count }}</div></td>
+                {% endfor %}
+                <td><span class="badge {% if row.mismatch %}badge-rust{% else %}badge-green{% endif %}">{{ row.avg_score }}%</span></td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="7"><div class="empty"><div class="empty-title">No heatmap data</div><div class="empty-text">Try another school filter or run analysis.</div></div></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="heatmap-legend"><span>Fewer course-job matches</span><span class="legend-ramp"></span><span>More course-job matches</span></div>
+      </div>
+
+      <div class="card">
+        <div class="section-hd">
+          <h2>Matched vs Missing Scatter</h2>
+          <span class="badge badge-gray">Course points</span>
+        </div>
+        <div class="chart-box"><canvas id="gapChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="grid-2 mb-6">
+      <div class="card">
+        <div class="card-label">Job Market - Top Skills Demanded</div>
+        <div style="margin-top:12px;">
+          {% for s in job_skills %}
+          <div class="skill-bar-row"><span class="skill-bar-name">{{ s.skill }}</span><div class="skill-bar-track"><div class="skill-bar-fill" style="width:{% widthratio s.frequency job_skills.0.frequency 100 %}%;background:var(--olive);"></div></div><span class="skill-bar-count">{{ s.frequency }}</span></div>
+          {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-label">Curriculum - Top Skills Taught</div>
+        <div style="margin-top:12px;">
+          {% for s in course_skills %}
+          <div class="skill-bar-row"><span class="skill-bar-name">{{ s.skill }}</span><div class="skill-bar-track"><div class="skill-bar-fill" style="width:{% widthratio s.frequency course_skills.0.frequency 100 %}%;background:var(--blue);"></div></div><span class="skill-bar-count">{{ s.frequency }}</span></div>
+          {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="suggestionsTab">
+    <div class="summary-grid">
+      {% for summary in school_summaries %}
+      <div class="summary-card {% if summary.mismatch %}is-risk{% endif %}">
+        <div class="card-label">{{ summary.school }}</div>
+        <div class="summary-score">{{ summary.avg_score }}%</div>
+        <div class="text-muted text-sm">{{ summary.course_count }} course{{ summary.course_count|pluralize }} - matched {{ summary.matched_total }} - missing {{ summary.missing_total }}</div>
+        <div class="mt-2"><span class="badge {% if summary.mismatch %}badge-rust{% else %}badge-green{% endif %}">{% if summary.mismatch %}Mismatch risk{% else %}Within threshold{% endif %}</span></div>
+      </div>
+      {% empty %}
+      <div class="empty"><div class="empty-title">No school summaries</div><div class="empty-text">Run analysis or adjust the school filter.</div></div>
+      {% endfor %}
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="section-hd"><h2>Curriculum Recommendations</h2><span class="badge badge-gold">Threshold {{ threshold }}%</span></div>
+        <div class="recommendation-list">
+          {% for item in school_recommendations %}
+          <div class="recommendation {% if item.score < threshold %}is-risk{% endif %}">
+            <div class="recommendation-title">{{ item.school }} - {{ item.score }}%</div>
+            <div class="text-muted text-sm">{{ item.message }}</div>
+          </div>
+          {% empty %}<p class="text-muted text-sm">No recommendations yet.</p>{% endfor %}
+        </div>
+      </div>
+      <div class="card">
+        <div class="section-hd"><h2>Skill Suggestions</h2><span class="badge badge-gray">Business-school gaps</span></div>
+        <div class="recommendation-list">
+          {% for item in course_recommendations %}
+          <div class="recommendation is-risk">
+            <div class="recommendation-title">{{ item.label }} - {{ item.school }} - {{ item.score }}%</div>
+            <div class="text-muted text-sm">{{ item.message }}</div>
+          </div>
+          {% empty %}<p class="text-muted text-sm">No skill suggestions are below the current threshold.</p>{% endfor %}
+        </div>
+        <div class="mini-skill-matrix">
+          <div class="section-hd" style="margin-bottom:0;">
+            <h2>School Skill Matrix</h2>
+            <span class="badge badge-gold">{% if selected_school %}{{ selected_school }}{% else %}Current selection{% endif %}</span>
+          </div>
+          {% for row in skill_suggestion_matrix %}
+          <div class="mini-skill-row">
+            <div class="mini-skill-name">{{ row.skill }}</div>
+            <div class="mini-skill-track"><div class="mini-skill-gap" style="width:{{ row.gap_width }}%;"></div></div>
+            <div class="mini-skill-meta">Gap {{ row.gap_percent }}%</div>
+            <div class="mini-skill-counts">
+              <span>Demand evidence {{ row.demand_count }}</span>
+              <span>Jobs {{ row.job_count }}</span>
+              <span>Courses covered {{ row.course_count }}</span>
+              <span>Gap evidence {{ row.missing_count }}</span>
+              <span>Coverage {{ row.coverage }}%</span>
+            </div>
+            <div class="mini-skill-help">
+              <strong>{{ row.skill }}</strong><br>
+              <code>Demand evidence = covered evidence + gap evidence = {{ row.matched_count }} + {{ row.missing_count }} = {{ row.demand_count }}</code><br>
+              <code>Gap % = gap evidence / demand evidence = {{ row.missing_count }} / {{ row.demand_count }} = {{ row.gap_percent }}%</code><br>
+              <code>Coverage % = covered evidence / demand evidence = {{ row.matched_count }} / {{ row.demand_count }} = {{ row.coverage }}%</code><br>
+              Jobs counts distinct job adverts; Courses covered counts distinct courses with matched evidence for this skill.
+            </div>
+          </div>
+          {% empty %}
+          <p class="text-muted text-sm">No skill matrix data for this school yet.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="matrixTab">
+    <div class="section-hd">
+      <h2>Course to Job Match Matrix</h2>
+      <input type="text" class="form-control" id="filterInput" placeholder="Filter by course, job, school, or country" style="width:320px;padding:8px 12px;font-size:13px;" oninput="filterRows()">
+    </div>
+    <div class="table-wrap">
+      <table id="resultsTable">
+        <thead><tr><th>Course</th><th>School</th><th>Country</th><th>Job Title</th><th>Company</th><th>Match Score</th><th>Matched</th><th>Missing</th><th></th></tr></thead>
+        <tbody>
+          {% for r in results %}
+          <tr class="result-row" data-course="{{ r.course.name|lower }}" data-job="{{ r.job.title|lower }}" data-school="{{ r.course.university_name|default:'Unassigned school'|lower }}" data-country="{{ r.course.country|default:'Unassigned country'|lower }}">
+            <td><span class="badge badge-olive">{{ r.course.code }}</span><span style="margin-left:8px;font-weight:500;">{{ r.course.name }}</span></td>
+            <td class="text-muted text-sm">{{ r.course.university_name|default:"Unassigned school" }}</td>
+            <td class="text-muted text-sm">{{ r.course.country|default:"Unassigned country" }}</td>
+            <td style="font-weight:500;">{{ r.job.title }}</td>
+            <td class="text-muted text-sm">{{ r.job.company|default:"None" }}</td>
+            <td style="min-width:140px;"><div class="score-bar"><div class="bar-track"><div class="bar-fill" style="width:{{ r.similarity_percent }}%"></div></div><span class="score-pct">{{ r.similarity_percent }}%</span></div><div class="text-muted text-sm text-mono mt-2">cosine {{ r.similarity_score|floatformat:4 }}</div></td>
+            <td><span class="badge badge-green">{{ r.matched_skills|length }}</span></td>
+            <td><span class="badge {% if r.missing_skills %}badge-rust{% else %}badge-gray{% endif %}">{{ r.missing_skills|length }}</span></td>
+            <td><button class="btn btn-outline btn-sm" onclick="toggleDetail('d{{ forloop.counter }}',this)">Details</button></td>
+          </tr>
+          <tr class="detail-panel" id="d{{ forloop.counter }}">
+            <td colspan="9" style="padding:20px 24px;">
+              <div class="grid-2">
+                <div><div class="card-label">Matched Skills</div><div class="chip-list">{% for sk in r.matched_skills %}<span class="chip chip-match">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></div>
+                <div><div class="card-label">Missing from Curriculum</div><div class="chip-list">{% for sk in r.missing_skills %}<span class="chip chip-miss">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">Full coverage</span>{% endfor %}</div></div>
+              </div>
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="9"><div class="empty"><div class="empty-title">No results yet</div><div class="empty-text">Queue an analysis to see gap data.</div></div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 
 {% else %}
@@ -224,14 +331,27 @@ function toggleDetail(id, btn) {
   btn.textContent = open ? 'Close' : 'Details';
 }
 function filterRows() {
-  const q = document.getElementById('filterInput').value.toLowerCase();
+  const input = document.getElementById('filterInput');
+  if (!input) return;
+  const q = input.value.toLowerCase();
   document.querySelectorAll('.result-row').forEach(row => {
-    const show = row.dataset.course.includes(q) || row.dataset.job.includes(q);
+    const show = row.dataset.course.includes(q)
+      || row.dataset.job.includes(q)
+      || row.dataset.school.includes(q)
+      || row.dataset.country.includes(q);
     row.style.display = show ? '' : 'none';
     const next = row.nextElementSibling;
     if (next?.classList.contains('detail-panel')) next.style.display = show ? '' : 'none';
   });
 }
+document.querySelectorAll('.results-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.results-tab').forEach(item => item.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(item => item.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab)?.classList.add('active');
+  });
+});
 const queueForm = document.getElementById('analysisQueueForm');
 const runBtn = document.getElementById('runBtn');
 const progressPanel = document.getElementById('queueProgress');
@@ -248,25 +368,15 @@ function setQueueProgress({ status = 'PENDING', progress = 0, notes = '' }) {
   progressFill.style.width = `${pct}%`;
   progressPct.textContent = `${pct}%`;
   progressStatus.textContent = status;
-  progressStatus.className = `badge ${
-    status === 'SUCCESS' ? 'badge-green' :
-    status === 'FAILURE' ? 'badge-rust' :
-    status === 'STARTED' ? 'badge-blue' : 'badge-gray'
-  }`;
-  progressTitle.textContent = status === 'SUCCESS'
-    ? 'Analysis complete'
-    : status === 'FAILURE'
-      ? 'Analysis failed'
-      : 'Analysis running';
+  progressStatus.className = `badge ${status === 'SUCCESS' ? 'badge-green' : status === 'FAILURE' ? 'badge-rust' : status === 'STARTED' ? 'badge-blue' : 'badge-gray'}`;
+  progressTitle.textContent = status === 'SUCCESS' ? 'Analysis complete' : status === 'FAILURE' ? 'Analysis failed' : 'Analysis running';
   progressNote.textContent = notes || 'Working through the analysis pipeline.';
   progressStage.textContent = status === 'SUCCESS' ? 'Refreshing results' : status;
 }
-
 async function pollTask(statusUrl) {
-  const response = await fetch(statusUrl, { headers: { 'Accept': 'application/json' } });
+  const response = await fetch(statusUrl, { headers: { 'Accept':'application/json' } });
   const data = await response.json();
   setQueueProgress(data);
-
   if (data.status === 'SUCCESS') {
     setTimeout(() => window.location.assign(queueForm.dataset.resultsUrl), 900);
     return;
@@ -278,87 +388,71 @@ async function pollTask(statusUrl) {
   }
   setTimeout(() => pollTask(statusUrl), 1200);
 }
-
 async function queueAnalysis(event) {
   if (!window.fetch) return;
   event.preventDefault();
-    runBtn.innerHTML = '<span class="spinner"></span> Queuing';
+  runBtn.innerHTML = '<span class="spinner"></span> Queuing';
   runBtn.disabled = true;
-    setQueueProgress({ status: 'PENDING', progress: 0, notes: 'Queueing analysis task.' });
-
+  setQueueProgress({ status:'PENDING', progress:0, notes:'Queueing analysis task.' });
   try {
     const response = await fetch(queueForm.action, {
-      method: 'POST',
-      body: new FormData(queueForm),
-      credentials: 'same-origin',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'Accept': 'application/json',
-      },
+      method:'POST',
+      body:new FormData(queueForm),
+      credentials:'same-origin',
+      headers:{ 'X-Requested-With':'XMLHttpRequest', 'Accept':'application/json' },
     });
     if (!response.ok) throw new Error('Could not queue analysis.');
     const data = await response.json();
-    setQueueProgress({ status: 'STARTED', progress: 1, notes: 'Analysis task started.' });
+    setQueueProgress({ status:'STARTED', progress:1, notes:'Analysis task started.' });
     pollTask(data.status_url);
   } catch (error) {
-    setQueueProgress({ status: 'FAILURE', progress: 0, notes: error.message });
+    setQueueProgress({ status:'FAILURE', progress:0, notes:error.message });
     runBtn.disabled = false;
     runBtn.innerHTML = 'Try Queue Analysis Again';
   }
 }
-
 queueForm?.addEventListener('submit', queueAnalysis);
 {% if selected_run and selected_run.status == 'running' %}
 setTimeout(() => location.reload(), 5000);
 {% endif %}
 </script>
 {% if selected_run %}
+{{ scatter_points|json_script:"scatter-data" }}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-const resultScores = [{% for r in results %}{{ r.similarity_percent }},{% endfor %}];
-const matchedCounts = [{% for r in results %}{{ r.matched_skills|length }},{% endfor %}];
-const missingCounts = [{% for r in results %}{{ r.missing_skills|length }},{% endfor %}];
-const buckets = [0, 0, 0, 0, 0];
-resultScores.forEach(score => buckets[Math.min(4, Math.floor(Math.max(0, score) / 20))] += 1);
-function setInsight(id, text) {
-  const target = document.getElementById(id);
-  if (target) target.textContent = text;
+const scatterPoints = JSON.parse(document.getElementById('scatter-data').textContent);
+const ctx = document.getElementById('gapChart');
+if (ctx) {
+  new Chart(ctx, {
+    type:'scatter',
+    data:{
+      datasets:[{
+        label:'Courses',
+        data:scatterPoints.map(item => ({ x:item.x, y:item.y, label:item.label, course:item.course, school:item.school, score:item.score })),
+        backgroundColor:scatterPoints.map(item => item.score < Number('{{ threshold }}') ? '#a33a2d' : '#f58220'),
+        borderColor:'#0b0b0b',
+        borderWidth:1,
+        pointRadius:7,
+        pointHoverRadius:9,
+      }]
+    },
+    options:{
+      responsive:true,
+      maintainAspectRatio:false,
+      plugins:{
+        legend:{ display:false },
+        tooltip:{ callbacks:{ label(context) {
+          const p = context.raw;
+          return `${p.label}: matched ${p.x}, missing ${p.y}, avg ${p.score}%`;
+        }}}
+      },
+      scales:{
+        x:{ title:{ display:true, text:'Matched skill evidence' }, beginAtZero:true, grid:{ color:'#ece7da' } },
+        y:{ title:{ display:true, text:'Missing skill evidence' }, beginAtZero:true, grid:{ color:'#ece7da' } }
+      }
+    }
+  });
 }
-function explainResultScores(scores, scoreBuckets) {
-  if (!scores.length) return 'This run has no scored matches yet. Check that courses have module content and jobs have descriptions.';
-  const average = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-  const strong = scores.filter(score => score >= 70).length;
-  const weak = scores.filter(score => score < 40).length;
-  if (average >= 75 || strong / scores.length >= 0.4) return `Strong run: average score is ${average.toFixed(1)}%, and ${strong} matches are 70% or higher. Prioritize those for evidence of alignment.`;
-  if (weak / scores.length >= 0.6) return `Weak run: ${weak} of ${scores.length} matches are below 40%. The course language and market language need closer inspection.`;
-  if (average >= 55) return `Moderate run: average score is ${average.toFixed(1)}%. Some pairings are useful, but missing skills still matter.`;
-  return `Mixed-to-low run: average score is ${average.toFixed(1)}%. Use the detailed rows to find whether low scores come from missing skills or unrelated job families.`;
-}
-function explainSkillGaps(matched, missing) {
-  const totalMatched = matched.reduce((sum, value) => sum + value, 0);
-  const totalMissing = missing.reduce((sum, value) => sum + value, 0);
-  const total = totalMatched + totalMissing;
-  if (!total) return 'No matched or missing skills were extracted. Add richer module/job descriptions or expand the skill dictionary.';
-  const coverage = totalMatched / total;
-  if (coverage >= 0.75) return `High skill coverage: ${Math.round(coverage * 100)}% of extracted skill evidence is matched. Remaining gaps are likely targeted improvements.`;
-  if (coverage >= 0.45) return `Partial skill coverage: ${Math.round(coverage * 100)}% matched. Focus on jobs with high missing counts before curriculum changes.`;
-  return `Low skill coverage: only ${Math.round(coverage * 100)}% matched. The curriculum is missing many skills requested by the selected jobs.`;
-}
-new Chart(document.getElementById('resultsScoreChart'), {
-  type:'bar',
-  data:{ labels:['0-20','20-40','40-60','60-80','80-100'], datasets:[{ data:buckets, backgroundColor:'#f58220', borderColor:'#0b0b0b', borderWidth:1 }] },
-  options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
-});
-setInsight('resultsScoreInsight', explainResultScores(resultScores, buckets));
-new Chart(document.getElementById('gapChart'), {
-  type:'line',
-  data:{ labels:resultScores.map((_, i) => `#${i + 1}`), datasets:[
-    { label:'Matched', data:matchedCounts, borderColor:'#0b0b0b', backgroundColor:'rgba(11,11,11,.08)', tension:.3, fill:true },
-    { label:'Missing', data:missingCounts, borderColor:'#f58220', backgroundColor:'rgba(245,130,32,.18)', tension:.3, fill:true }
-  ] },
-  options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10 } } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ display:false } } }
-});
-setInsight('gapInsight', explainSkillGaps(matchedCounts, missingCounts));
 </script>
 {% endif %}
 {% endblock %}

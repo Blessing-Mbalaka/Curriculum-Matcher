@@ -13,58 +13,96 @@
 {% block extra_css %}
 <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/styles/vis-network.min.css">
 <style>
+#analysisQueueForm { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 .dashboard-hero {
   display:grid;
-  grid-template-columns: minmax(280px, 1.15fr) minmax(320px, 0.85fr);
-  gap:20px;
+  grid-template-columns:minmax(320px, 1.15fr) minmax(360px, .85fr);
+  gap:16px;
   align-items:stretch;
-  margin-bottom:20px;
+  margin-bottom:16px;
 }
 .command-panel {
-  background:linear-gradient(135deg, #090909 0%, #1a1710 100%);
-  color:#fff;
-  border:1px solid rgba(211, 176, 91, 0.32);
-  border-radius:8px;
-  padding:28px;
-  min-height:280px;
-  position:relative;
-  overflow:hidden;
+  background:var(--surface);
+  color:var(--ink);
+  border:1px solid var(--rule);
+  border-left:4px solid var(--uj-orange);
+  border-radius:6px;
+  padding:18px;
+  min-height:0;
 }
-.command-panel:after {
-  content:"";
-  position:absolute;
-  inset:auto -12% -34% 42%;
-  height:190px;
-  background:radial-gradient(circle, rgba(245,130,32,.24), transparent 68%);
-  pointer-events:none;
-}
-.hero-kicker { font-family:var(--mono); color:var(--gold); text-transform:uppercase; letter-spacing:.16em; font-size:11px; margin-bottom:14px; }
-.hero-title { font-family:var(--display); font-size:38px; line-height:1.02; max-width:680px; letter-spacing:0; }
-.hero-copy { max-width:620px; color:rgba(255,255,255,.68); margin-top:14px; font-size:14px; }
-.live-form { display:grid; grid-template-columns:1.2fr 1fr .7fr .7fr; gap:10px; margin-top:26px; position:relative; z-index:1; }
-.live-form .form-control { background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.18); }
-.live-form .form-control::placeholder { color:rgba(255,255,255,.5); }
-.live-actions { display:flex; gap:10px; margin-top:12px; position:relative; z-index:1; }
-.signal-panel { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.hero-kicker { font-family:var(--mono); color:var(--muted); text-transform:uppercase; letter-spacing:.12em; font-size:10px; margin-bottom:8px; }
+.hero-title { font-family:var(--sans); font-size:22px; font-weight:800; line-height:1.2; max-width:760px; letter-spacing:0; }
+.hero-copy { max-width:780px; color:var(--muted); margin-top:8px; font-size:13px; line-height:1.5; }
+.live-form { display:grid; grid-template-columns:minmax(160px,1.4fr) minmax(150px,1fr) minmax(92px,.55fr) minmax(120px,.65fr); gap:10px; margin-top:18px; }
+.live-form .form-control { background:#fff; color:var(--ink); border-color:var(--rule); min-width:0; }
+.live-actions { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
+.signal-panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
 .metric-card {
   background:var(--surface);
   border:1px solid var(--rule);
-  border-radius:8px;
-  padding:22px;
-  min-height:132px;
+  border-radius:6px;
+  padding:16px;
+  min-height:112px;
 }
-.metric-card.featured { background:#0b0b0b; color:#fff; border-color:rgba(245,130,32,.46); }
+.metric-card.featured { background:#111; color:#fff; border-color:#111; }
 .metric-label { font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
-.metric-card.featured .metric-label { color:var(--gold); }
-.metric-value { font-family:var(--display); font-weight:800; font-size:40px; line-height:1; margin-top:14px; }
+.metric-card.featured .metric-label { color:var(--uj-orange); }
+.metric-value { font-family:var(--sans); font-weight:800; font-size:34px; line-height:1; margin-top:12px; letter-spacing:0; }
 .metric-sub { color:var(--muted); font-size:12px; margin-top:8px; }
 .metric-card.featured .metric-sub { color:rgba(255,255,255,.62); }
-.dashboard-grid { display:grid; grid-template-columns:1.1fr .9fr; gap:20px; align-items:start; }
-.visual-card { min-height:360px; }
-.chart-box { height:280px; }
-#similarityNetwork { height:430px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
-.activity-list { display:flex; flex-direction:column; gap:10px; margin-top:16px; }
-.activity-row { display:grid; grid-template-columns:1fr auto; gap:12px; align-items:center; padding:12px 0; border-bottom:1px solid var(--rule); }
+.dashboard-grid { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(320px,.9fr); gap:16px; align-items:start; }
+.visual-card { min-height:0; }
+.chart-box { height:300px; }
+.network-shell { border:1px solid var(--rule); border-radius:6px; background:#fff; overflow:hidden; }
+.network-toolbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--rule);
+  background:#fbfaf8;
+}
+.network-legend { display:flex; flex-wrap:wrap; gap:12px; align-items:center; color:var(--muted); font-size:12px; }
+.legend-item { display:inline-flex; align-items:center; gap:6px; }
+.legend-swatch { width:10px; height:10px; border-radius:50%; display:inline-block; border:1px solid #111; }
+.legend-swatch.course { background:#111; border-color:#f58220; }
+.legend-swatch.job { background:#f58220; }
+.legend-line { width:26px; height:2px; background:#d68a49; display:inline-block; }
+.network-meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
+.network-mode { display:inline-flex; border:1px solid var(--rule); border-radius:6px; overflow:hidden; }
+.network-mode button { border:0; border-right:1px solid var(--rule); border-radius:0; padding:6px 10px; background:#fff; color:var(--muted); }
+.network-mode button:last-child { border-right:0; }
+.network-mode button.active { background:#111; color:#fff; }
+.network-filters {
+  display:grid;
+  grid-template-columns:minmax(180px,1fr) minmax(220px,1.2fr) auto;
+  gap:8px;
+  padding:10px 12px;
+  border-bottom:1px solid var(--rule);
+  background:#fff;
+}
+.network-filters .form-control { padding:8px 10px; font-size:12px; }
+.network-canvas-wrap { position:relative; }
+#similarityNetwork,
+#similarityNetwork3d { height:clamp(380px, 52vh, 560px); background:linear-gradient(#fff,#fff), radial-gradient(circle at 20px 20px, rgba(16,16,16,.04) 1px, transparent 1px); background-size:auto, 24px 24px; }
+#similarityNetwork3d { display:none; cursor:grab; }
+.network-canvas-wrap.is-3d #similarityNetwork { display:none; }
+.network-canvas-wrap.is-3d #similarityNetwork3d { display:block; }
+.network-empty {
+  position:absolute;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  padding:24px;
+  color:var(--muted);
+  background:rgba(255,255,255,.88);
+}
+.network-empty.active { display:flex; }
+.activity-list { display:flex; flex-direction:column; gap:0; margin-top:10px; }
+.activity-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--rule); }
 .activity-row:last-child { border-bottom:0; }
 .activity-row.is-running {
   position:relative;
@@ -78,12 +116,12 @@
   width:8px;
   height:8px;
   border-radius:50%;
-  background:var(--gold);
-  box-shadow:0 0 0 0 rgba(245,130,32,.58);
+  background:var(--uj-orange);
+  box-shadow:0 0 0 0 rgba(245,130,32,.36);
   animation:fetchPulse 1.3s ease-out infinite;
 }
 .fetch-strip {
-  height:3px;
+  height:2px;
   margin-top:8px;
   overflow:hidden;
   border-radius:999px;
@@ -94,7 +132,7 @@
   width:42%;
   height:100%;
   border-radius:999px;
-  background:linear-gradient(90deg, transparent, var(--gold), transparent);
+  background:linear-gradient(90deg, transparent, var(--uj-orange), transparent);
   animation:fetchSweep 1.15s ease-in-out infinite;
 }
 @keyframes fetchPulse {
@@ -105,16 +143,55 @@
   from { transform:translateX(-110%); }
   to { transform:translateX(250%); }
 }
-.match-list { margin-top:14px; display:flex; flex-direction:column; gap:10px; }
-.match-row { display:grid; grid-template-columns:1fr 92px; gap:12px; align-items:center; }
-.match-name { font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-@media (max-width:1100px) {
-  .dashboard-hero, .dashboard-grid { grid-template-columns:1fr; }
+.match-list { margin-top:10px; display:grid; gap:10px; }
+.match-tile {
+  width:100%;
+  border:1px solid var(--rule);
+  border-radius:6px;
+  background:#fff;
+  padding:12px;
+  text-align:left;
+  cursor:pointer;
+  display:grid;
+  gap:8px;
+  min-width:0;
+}
+.match-tile:hover { border-color:var(--uj-orange); background:#fffaf5; }
+.match-tile-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:start; }
+.match-course, .match-job { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+.match-course { font-weight:800; font-size:13px; color:var(--ink); }
+.match-job { font-size:12px; color:var(--muted); margin-top:2px; }
+.match-meta { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--muted); font-size:11px; }
+.match-detail {
+  display:none;
+  border-top:1px solid var(--rule);
+  padding-top:10px;
+  color:var(--muted);
+  font-size:12px;
+}
+.match-detail.open { display:block; }
+.match-skill-block { margin-top:8px; }
+.match-skill-label { font-family:var(--mono); font-size:10px; color:#9a4a08; text-transform:uppercase; letter-spacing:.1em; margin-bottom:6px; }
+@media (max-width:1180px) {
+  .dashboard-hero { grid-template-columns:1fr; }
+  .dashboard-grid { grid-template-columns:1fr; }
   .live-form { grid-template-columns:1fr 1fr; }
 }
-@media (max-width:720px) {
+@media (max-width:760px) {
   .signal-panel, .live-form { grid-template-columns:1fr; }
-  .hero-title { font-size:30px; }
+  .hero-title { font-size:19px; }
+  .metric-value { font-size:30px; }
+  .live-actions .btn, #analysisQueueForm .btn { width:100%; justify-content:center; }
+  #similarityNetwork, #similarityNetwork3d { height:380px; }
+  .activity-row { grid-template-columns:1fr; }
+  .activity-row > .badge { justify-self:start; }
+  .match-tile-head { grid-template-columns:1fr; }
+  .network-toolbar, .network-meta { align-items:flex-start; }
+  .network-toolbar, .network-filters { grid-template-columns:1fr; display:grid; }
+}
+@media (max-width:520px) {
+  .command-panel, .metric-card { padding:14px; }
+  .chart-box { height:260px; }
 }
 </style>
 {% endblock %}
@@ -135,8 +212,8 @@
     </form>
     <div class="live-actions">
       <button class="btn btn-gold" id="startJobsOnlyBtn" type="button">Start Jobs Only</button>
-      <button class="btn btn-outline-on-dark" id="startLiveBtn" type="button">Start Live Analysis</button>
-      <button class="btn btn-outline-on-dark" id="stopLiveBtn" type="button" data-stop-url="{% if live_task %}{% url 'stop-task' live_task.id %}{% endif %}" {% if not live_task %}disabled{% endif %}>Pause</button>
+      <button class="btn btn-outline" id="startLiveBtn" type="button">Start Live Analysis</button>
+      <button class="btn btn-outline" id="stopLiveBtn" type="button" data-stop-url="{% if live_task %}{% url 'stop-task' live_task.id %}{% endif %}" {% if not live_task %}disabled{% endif %}>Pause</button>
       <span class="badge badge-gold" id="liveStatus">{% if live_task %}RUNNING{% else %}IDLE{% endif %}</span>
     </div>
   </section>
@@ -170,12 +247,12 @@
   </section>
 </div>
 
-<div class="dashboard-grid mb-6">
+<div class="mb-6">
   <div class="card visual-card">
     <div class="section-hd">
       <h2>Cosine Similarity Network</h2>
       <div class="flex gap-2">
-        <span class="badge badge-gray">NetworkX data</span>
+        <span class="badge badge-gray">Course-job links</span>
         <span class="graph-insight">
           <button class="graph-insight-btn" type="button" aria-label="Explain cosine similarity network"></button>
           <span class="graph-insight-popover">
@@ -185,24 +262,49 @@
         </span>
       </div>
     </div>
-    <div id="similarityNetwork"></div>
-  </div>
-
-  <div class="card visual-card">
-    <div class="section-hd">
-      <h2>Score Distribution</h2>
-      <div class="flex gap-2">
-        <span class="badge badge-gold">Live</span>
-        <span class="graph-insight">
-          <button class="graph-insight-btn" type="button" aria-label="Explain score distribution"></button>
-          <span class="graph-insight-popover">
-            <span class="graph-insight-title">Score reading</span>
-            <span class="graph-insight-body" id="scoreInsight">Waiting for score data.</span>
+    <div class="network-shell">
+      <div class="network-toolbar">
+        <div class="network-legend">
+          <span class="legend-item"><span class="legend-swatch course"></span>Course</span>
+          <span class="legend-item"><span class="legend-swatch job"></span>Job advert</span>
+          <span class="legend-item"><span class="legend-line"></span>Similarity link</span>
+        </div>
+        <div class="network-meta">
+          <span class="badge badge-gray" id="networkNodeCount">0 nodes</span>
+          <span class="badge badge-gold" id="networkEdgeCount">0 links</span>
+          <span class="network-mode" aria-label="Network view mode">
+            <button class="btn-sm active" type="button" id="network2dBtn">2D</button>
+            <button class="btn-sm" type="button" id="network3dBtn">3D</button>
           </span>
-        </span>
+          <button class="btn btn-outline btn-sm" type="button" id="fitNetworkBtn">Fit view</button>
+        </div>
+      </div>
+      <div class="network-filters">
+        <select class="form-control" id="networkSchoolFilter" aria-label="Filter network by school">
+          <option value="">All schools</option>
+          {% for school in network_schools %}
+          <option value="{{ school }}">{{ school }}</option>
+          {% endfor %}
+        </select>
+        <select class="form-control" id="networkJobFilter" aria-label="Filter network by job advert">
+          <option value="">All jobs</option>
+          {% for job in network_jobs %}
+          <option value="{{ job.id }}">{{ job.title }}{% if job.company %} - {{ job.company }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline btn-sm" type="button" id="clearNetworkFiltersBtn">Clear</button>
+      </div>
+      <div class="network-canvas-wrap">
+        <div id="similarityNetwork"></div>
+        <div id="similarityNetwork3d"></div>
+        <div class="network-empty active" id="networkEmpty">
+          <div>
+            <div style="font-weight:700;color:var(--ink);">No network data yet</div>
+            <div class="text-sm mt-2">Queue an analysis after adding courses and jobs.</div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="chart-box"><canvas id="scoreChart"></canvas></div>
   </div>
 </div>
 
@@ -228,15 +330,35 @@
     <div class="section-hd"><h2>Live Activity</h2></div>
     <div class="activity-list" id="activityList"></div>
     <hr class="divider">
-    <div class="section-hd"><h2>Top Matches</h2></div>
+    <div class="section-hd">
+      <h2>Best Course-to-Job Matches</h2>
+      <span class="badge badge-gray">Latest analysis</span>
+    </div>
     <div class="match-list">
       {% for r in latest_results %}
-      <div class="match-row">
-        <div>
-          <div class="match-name">{{ r.course.name }} to {{ r.job.title }}</div>
-          <div class="text-muted text-sm">Cosine similarity {{ r.similarity_score|floatformat:4 }}</div>
+      <button class="match-tile" type="button" aria-expanded="false" aria-controls="matchDetail{{ forloop.counter }}" onclick="toggleMatchTile('matchDetail{{ forloop.counter }}', this)">
+        <div class="match-tile-head">
+          <div>
+            <div class="match-course">{{ r.course.name }}</div>
+            <div class="match-job">{{ r.job.title }}</div>
+          </div>
+          <span class="badge badge-gold">{{ r.similarity_percent }}%</span>
         </div>
-        <span class="badge badge-gold">{{ r.similarity_percent }}%</span>
+        <div class="match-meta">
+          <span>Course to job advert</span>
+          <span class="text-mono">cos {{ r.similarity_score|floatformat:4 }}</span>
+        </div>
+      </button>
+      <div class="match-detail" id="matchDetail{{ forloop.counter }}">
+        <div><strong>{{ r.course.code|default:"Course" }}</strong> matched against <strong>{{ r.job.company|default:"job market advert" }}</strong>.</div>
+        <div class="match-skill-block">
+          <div class="match-skill-label">Matched skills</div>
+          <div class="chip-list">{% for skill in r.matched_skills|slice:":6" %}<span class="chip chip-match">{{ skill }}</span>{% empty %}<span class="text-muted">No matched skills recorded.</span>{% endfor %}</div>
+        </div>
+        <div class="match-skill-block">
+          <div class="match-skill-label">Missing skills</div>
+          <div class="chip-list">{% for skill in r.missing_skills|slice:":6" %}<span class="chip chip-miss">{{ skill }}</span>{% empty %}<span class="text-muted">No missing skills recorded.</span>{% endfor %}</div>
+        </div>
       </div>
       {% empty %}
       <p class="text-muted text-sm">No similarity scores yet. Queue an analysis after adding courses and jobs.</p>
@@ -249,6 +371,8 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/three-spritetext@1.9.0/dist/three-spritetext.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
 <script>
 const metricsUrl = "{% url 'dashboard-metrics' %}";
 const networkUrl = "{% url 'similarity-network' %}";
@@ -260,15 +384,28 @@ const startJobsOnlyBtn = document.getElementById('startJobsOnlyBtn');
 const startLiveBtn = document.getElementById('startLiveBtn');
 const stopLiveBtn = document.getElementById('stopLiveBtn');
 const liveStatus = document.getElementById('liveStatus');
+const fitNetworkBtn = document.getElementById('fitNetworkBtn');
+const networkEmpty = document.getElementById('networkEmpty');
+const networkNodeCount = document.getElementById('networkNodeCount');
+const networkEdgeCount = document.getElementById('networkEdgeCount');
+const networkSchoolFilter = document.getElementById('networkSchoolFilter');
+const networkJobFilter = document.getElementById('networkJobFilter');
+const clearNetworkFiltersBtn = document.getElementById('clearNetworkFiltersBtn');
+const network2dBtn = document.getElementById('network2dBtn');
+const network3dBtn = document.getElementById('network3dBtn');
+const networkCanvasWrap = document.querySelector('.network-canvas-wrap');
+const network3dContainer = document.getElementById('similarityNetwork3d');
 let liveStatusUrl = "{% if live_task %}{% url 'task-status-api' live_task.id %}{% endif %}";
 let autoStartJobsOnly = {% if should_autostart_jobs %}true{% else %}false{% endif %};
 const toastedTasks = new Set();
 let metricsLoaded = false;
-let lastScoreSignature = '';
 let lastSkillsSignature = '';
 let networkInstance = null;
 let networkNodes = null;
 let networkEdges = null;
+let networkGraph3d = null;
+let currentNetworkGraph = null;
+let networkMode = '2d';
 let lastNetworkSignature = '';
 
 function csrfToken() {
@@ -290,17 +427,11 @@ function setInsight(id, text) {
   if (target) target.textContent = text;
 }
 
-function explainScoreDistribution(buckets, averageScore) {
-  const total = buckets.reduce((sum, value) => sum + value, 0);
-  if (!total) return 'No match scores exist yet. Run analysis after courses and jobs are available.';
-  const strong = (buckets[3] || 0) + (buckets[4] || 0);
-  const weak = (buckets[0] || 0) + (buckets[1] || 0);
-  const strongShare = strong / total;
-  const weakShare = weak / total;
-  if (averageScore >= 75 || strongShare >= 0.5) return `Strong alignment signal: ${Math.round(strongShare * 100)}% of matches are in the 60%+ bands, with an average score of ${averageScore}%.`;
-  if (averageScore >= 55 || strongShare >= 0.25) return `Moderate alignment: ${Math.round(strongShare * 100)}% of matches are above 60%. Review missing skills before changing curriculum.`;
-  if (weakShare >= 0.6) return `Weak alignment signal: ${Math.round(weakShare * 100)}% of matches are below 40%. The curriculum and job language are currently far apart.`;
-  return `Mixed alignment: scores are spread across bands. Use the match matrix to inspect which courses drive the stronger and weaker results.`;
+function toggleMatchTile(detailId, button) {
+  const detail = document.getElementById(detailId);
+  if (!detail) return;
+  const isOpen = detail.classList.toggle('open');
+  button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
 function explainSkills(labels, jobValues, courseValues) {
@@ -334,11 +465,104 @@ function signature(value) {
   return JSON.stringify(value || null);
 }
 
-const scoreChart = new Chart(document.getElementById('scoreChart'), {
-  type: 'bar',
-  data: { labels: ['0-20','20-40','40-60','60-80','80-100'], datasets: [{ label: 'Matches', data: [0,0,0,0,0], backgroundColor: '#f58220', borderColor: '#0b0b0b', borderWidth: 1 }] },
-  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
-});
+function filteredNetworkUrl() {
+  const url = new URL(networkUrl, window.location.origin);
+  if (networkSchoolFilter?.value) url.searchParams.set('school', networkSchoolFilter.value);
+  if (networkJobFilter?.value) url.searchParams.set('job', networkJobFilter.value);
+  return url.toString();
+}
+
+function styleNetworkNode(node) {
+  const isCourse = node.group === 'course';
+  return {
+    ...node,
+    shape: 'dot',
+    size: isCourse ? 18 : 15,
+    borderWidth: 2,
+    color: isCourse
+      ? { background:'#111111', border:'#f58220', highlight:{ background:'#242424', border:'#b95400' } }
+      : { background:'#f58220', border:'#111111', highlight:{ background:'#ff9a3d', border:'#111111' } },
+    font: {
+      face:'Inter, Arial',
+      size:11,
+      color:'#111111',
+      bold:'700',
+      vadjust:20,
+    },
+  };
+}
+
+function setNetworkMode(mode) {
+  networkMode = mode;
+  networkCanvasWrap?.classList.toggle('is-3d', mode === '3d');
+  network2dBtn?.classList.toggle('active', mode === '2d');
+  network3dBtn?.classList.toggle('active', mode === '3d');
+  if (mode === '2d') {
+    networkInstance?.fit({ animation:{ duration:300, easingFunction:'easeInOutQuad' } });
+  } else {
+    render3DNetwork(currentNetworkGraph);
+  }
+}
+
+function render3DNetwork(graph) {
+  if (!graph?.has_visual_data || !network3dContainer) return;
+  if (!window.ForceGraph3D) {
+    window.showToast?.({
+      title:'3D network unavailable',
+      body:'The 3D graph library could not load. The 2D network is still available.',
+      type:'error',
+      timeout:7000,
+    });
+    setNetworkMode('2d');
+    return;
+  }
+  const graphData = {
+    nodes: graph.nodes.map(node => ({ ...node, name:node.label })),
+    links: graph.edges.map(edge => ({ source:edge.from, target:edge.to, value:Number(edge.value || 1), title:edge.title })),
+  };
+  if (!networkGraph3d) {
+    networkGraph3d = ForceGraph3D()(network3dContainer)
+      .backgroundColor('#ffffff')
+      .showNavInfo(false)
+      .nodeLabel(node => `${node.group === 'course' ? 'Course' : 'Job'}: ${node.title || node.label}`)
+      .nodeColor(node => node.group === 'course' ? '#111111' : '#f58220')
+      .nodeVal(node => node.group === 'course' ? 7 : 5)
+      .linkWidth(link => Math.max(1, Math.min(5, Number(link.value || 1) / 22)))
+      .linkColor(link => Number(link.value || 0) >= 70 ? '#111111' : '#d47722')
+      .linkOpacity(.46)
+      .linkDirectionalParticles(1)
+      .linkDirectionalParticleWidth(link => Number(link.value || 0) >= 70 ? 2 : 1)
+      .nodeThreeObject(node => {
+        if (!window.SpriteText) return null;
+        const sprite = new SpriteText(node.label);
+        sprite.color = node.group === 'course' ? '#111111' : '#8a3f00';
+        sprite.textHeight = 5;
+        sprite.position.y = 9;
+        return sprite;
+      })
+      .nodeThreeObjectExtend(true);
+  }
+  networkGraph3d.width(network3dContainer.clientWidth || 900);
+  networkGraph3d.height(network3dContainer.clientHeight || 480);
+  networkGraph3d.graphData(graphData);
+}
+
+function styleNetworkEdge(edge) {
+  const value = Number(edge.value || 1);
+  const strong = value >= 70;
+  const medium = value >= 45;
+  return {
+    ...edge,
+    width: strong ? 3 : medium ? 2 : 1,
+    color: {
+      color: strong ? '#111111' : medium ? '#d47722' : '#d7c2ad',
+      highlight:'#f58220',
+      opacity: strong ? .72 : medium ? .54 : .32,
+    },
+    font: { face:'Inter, Arial', size:10, color:'#706960', strokeWidth:0 },
+    title: edge.title || `Cosine similarity: ${value}%`,
+  };
+}
 
 const skillsChart = new Chart(document.getElementById('skillsChart'), {
   type: 'line',
@@ -356,14 +580,6 @@ async function refreshMetrics() {
   document.getElementById('courseCount').textContent = data.counts.courses;
   if (data.has_visual_data) {
     document.getElementById('avgScore').textContent = `${data.average_score}%`;
-    const scoreSignature = signature([data.visual_run?.id, data.score_labels, data.score_buckets, data.average_score]);
-    if (scoreSignature !== lastScoreSignature) {
-      lastScoreSignature = scoreSignature;
-      scoreChart.data.labels = data.score_labels;
-      scoreChart.data.datasets[0].data = data.score_buckets;
-      scoreChart.update();
-      setInsight('scoreInsight', explainScoreDistribution(data.score_buckets, data.average_score));
-    }
   }
 
   const labels = [...new Set([...data.job_skills.map(s => s.skill), ...data.course_skills.map(s => s.skill)])].slice(0, 10);
@@ -412,12 +628,25 @@ async function refreshMetrics() {
 }
 
 async function refreshNetwork() {
-  const response = await fetch(networkUrl, { headers: { 'Accept':'application/json' } });
+  const response = await fetch(filteredNetworkUrl(), { headers: { 'Accept':'application/json' } });
   const graph = await response.json();
-  if (!graph.has_visual_data && networkInstance) return;
+  currentNetworkGraph = graph;
+  networkNodeCount.textContent = `${graph.nodes.length} node${graph.nodes.length === 1 ? '' : 's'}`;
+  networkEdgeCount.textContent = `${graph.edges.length} link${graph.edges.length === 1 ? '' : 's'}`;
+  networkEmpty?.classList.toggle('active', !graph.has_visual_data);
+  if (!graph.has_visual_data) {
+    networkNodes?.clear();
+    networkEdges?.clear();
+    networkGraph3d?.graphData({ nodes:[], links:[] });
+    setInsight('networkInsight', explainNetwork(graph));
+    lastNetworkSignature = signature([graph.run_id, networkSchoolFilter?.value, networkJobFilter?.value, [], []]);
+    return;
+  }
   setInsight('networkInsight', explainNetwork(graph));
   const networkSignature = signature([
     graph.run_id,
+    networkSchoolFilter?.value,
+    networkJobFilter?.value,
     graph.nodes.map(node => [node.id, node.label, node.group, node.x, node.y]),
     graph.edges.map(edge => [edge.from, edge.to, edge.value]),
   ]);
@@ -428,24 +657,63 @@ async function refreshNetwork() {
   if (!networkEdges) networkEdges = new vis.DataSet();
   networkNodes.clear();
   networkEdges.clear();
-  networkNodes.add(graph.nodes);
-  networkEdges.add(graph.edges);
+  networkNodes.add(graph.nodes.map(styleNetworkNode));
+  networkEdges.add(graph.edges.map(styleNetworkEdge));
   const data = { nodes: networkNodes, edges: networkEdges };
   const options = {
-    nodes: { shape:'dot', size:18, borderWidth:1, font:{ face:'Inter, Arial', size:12, color:'#0b0b0b' } },
-    edges: { color:{ color:'#f0a15e', highlight:'#0b0b0b' }, smooth:false, scaling:{ min:1, max:6 } },
-    groups: { course:{ color:{ background:'#0b0b0b', border:'#f58220' }, font:{ color:'#0b0b0b' } }, job:{ color:{ background:'#f58220', border:'#0b0b0b' } } },
+    nodes: { shadow:false },
+    edges: {
+      smooth:{ enabled:true, type:'continuous', roundness:.18 },
+      arrows:{ to:{ enabled:false } },
+      selectionWidth:1.5,
+    },
     layout: { improvedLayout:false },
     physics: false,
-    interaction: { hover:true, tooltipDelay:80, dragNodes:true, navigationButtons:true, keyboard:true }
+    interaction: {
+      hover:true,
+      tooltipDelay:80,
+      dragNodes:true,
+      dragView:true,
+      zoomView:true,
+      navigationButtons:false,
+      keyboard:true,
+    }
   };
   if (!networkInstance) {
     networkInstance = new vis.Network(container, data, options);
+    networkInstance.once('afterDrawing', () => networkInstance.fit({ animation:{ duration:450, easingFunction:'easeInOutQuad' } }));
   } else {
     networkInstance.setOptions(options);
     networkInstance.setData(data);
+    networkInstance.fit({ animation:{ duration:350, easingFunction:'easeInOutQuad' } });
   }
+  if (networkMode === '3d') render3DNetwork(graph);
 }
+
+fitNetworkBtn?.addEventListener('click', () => {
+  if (networkMode === '3d' && networkGraph3d) {
+    networkGraph3d.zoomToFit(500, 80);
+  } else {
+    networkInstance?.fit({ animation:{ duration:350, easingFunction:'easeInOutQuad' } });
+  }
+});
+
+network2dBtn?.addEventListener('click', () => setNetworkMode('2d'));
+network3dBtn?.addEventListener('click', () => setNetworkMode('3d'));
+
+[networkSchoolFilter, networkJobFilter].forEach(input => {
+  input?.addEventListener('change', () => {
+    lastNetworkSignature = '';
+    refreshNetwork();
+  });
+});
+
+clearNetworkFiltersBtn?.addEventListener('click', () => {
+  if (networkSchoolFilter) networkSchoolFilter.value = '';
+  if (networkJobFilter) networkJobFilter.value = '';
+  lastNetworkSignature = '';
+  refreshNetwork();
+});
 
 async function pollLiveTask() {
   if (!liveStatusUrl) return;

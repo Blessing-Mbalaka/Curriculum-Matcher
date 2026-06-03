@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}CurriculumMatch{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
   --ink:      #0a0a0f;
@@ -18,8 +18,8 @@
   --rust:     #c94f2c;
   --blue:     #1a3a6b;
   --muted:    #7a7670;
-  --syne:     'Syne', sans-serif;
-  --sans:     'Instrument Sans', sans-serif;
+  --syne:     'Inter', sans-serif;
+  --sans:     'Inter', sans-serif;
   --mono:     'JetBrains Mono', monospace;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,14 +48,14 @@ body {
   overflow-y: auto;
 }
 .sidebar-brand {
-  padding: 32px 28px 24px;
+  padding: 22px 22px 18px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .brand-name {
-  font-family: var(--syne);
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.02em;
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0;
   color: var(--lime);
   line-height: 1;
 }
@@ -123,10 +123,10 @@ body {
   z-index: 100;
 }
 .page-title {
-  font-family: var(--syne);
+  font-family: var(--sans);
   font-weight: 700;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  font-size: 14px;
+  letter-spacing: 0;
 }
 .topbar-actions { display: flex; gap: 10px; align-items: center; }
 .content { padding: 36px 40px; flex: 1; }
@@ -186,8 +186,8 @@ body {
 
 /* ---- Stat card ---- */
 .stat-val {
-  font-family: var(--syne);
-  font-size: 42px;
+  font-family: var(--sans);
+  font-size: 36px;
   font-weight: 800;
   line-height: 1;
   color: var(--ink);
@@ -304,7 +304,7 @@ select.form-control { cursor: pointer; }
   background: #f0faf2;
 }
 .upload-zone-icon { font-size: 36px; margin-bottom: 12px; }
-.upload-zone-title { font-family: var(--syne); font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+.upload-zone-title { font-family: var(--sans); font-size: 15px; font-weight: 700; margin-bottom: 6px; }
 .upload-zone-hint { font-size: 12px; color: var(--muted); }
 
 /* ---- Chips ---- */
@@ -343,8 +343,8 @@ select.form-control { cursor: pointer; }
   margin-bottom: 20px;
 }
 .section-hd h2 {
-  font-family: var(--syne);
-  font-size: 16px;
+  font-family: var(--sans);
+  font-size: 15px;
   font-weight: 700;
 }
 
@@ -368,8 +368,8 @@ select.form-control { cursor: pointer; }
 }
 .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
 .empty-title {
-  font-family: var(--syne);
-  font-size: 18px;
+  font-family: var(--sans);
+  font-size: 16px;
   font-weight: 700;
   color: var(--ink);
   margin-bottom: 8px;
@@ -410,7 +410,7 @@ select.form-control { cursor: pointer; }
   --rust: #9e2f18;
   --blue: #29384a;
   --muted: #706960;
-  --display: 'Syne', sans-serif;
+  --display: 'Inter', sans-serif;
 }
 body {
   background:
@@ -426,7 +426,7 @@ body {
   background:linear-gradient(180deg, rgba(245,130,32,.16), rgba(16,16,16,0));
 }
 .brand-name { color:var(--uj-orange); letter-spacing:0; }
-.brand-sub { color:rgba(255,255,255,.46); }
+.brand-sub { color:rgba(255,255,255,.46); font-size:9px; }
 .nav-item { border:1px solid transparent; }
 .nav-item:hover { background:rgba(245,130,32,.11); color:#fff; border-color:rgba(245,130,32,.26); }
 .nav-item.active { background:var(--uj-orange); color:#111; }
@@ -436,8 +436,10 @@ body {
   background:rgba(255,255,255,.92);
   backdrop-filter: blur(16px);
   border-bottom:1px solid rgba(245,130,32,.22);
+  padding-top:12px;
+  padding-bottom:12px;
 }
-.page-title { font-family:var(--display); letter-spacing:0; }
+.page-title { font-family:var(--sans); font-size:14px; letter-spacing:0; }
 .content { max-width:1540px; width:100%; }
 .btn, .card, .form-control, .table-wrap, .upload-zone, .alert { border-radius:8px; }
 .btn-primary { background:#111; color:#fff; border:1px solid #111; }

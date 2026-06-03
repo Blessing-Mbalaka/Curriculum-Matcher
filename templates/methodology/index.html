@@ -78,6 +78,22 @@
   overflow:auto;
 }
 .formula b { color:var(--gold-dark); }
+.math-card {
+  padding:16px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fffaf5;
+  display:grid;
+  gap:12px;
+}
+.math-line {
+  padding:10px 12px;
+  border:1px solid #ffbd80;
+  border-radius:6px;
+  background:#fff;
+  overflow:auto;
+}
+.math-note { color:var(--muted); font-size:12px; }
 .mini-heading {
   font-family:var(--display);
   font-size:18px;
@@ -193,7 +209,7 @@
       </div>
       <div class="pipeline-step">
         <div class="step-num">04</div>
-        <div><strong>Score and visualise</strong><span>Cosine scores, skill gaps, score distributions, and static network layouts make alignment inspectable.</span></div>
+        <div><strong>Score and visualise</strong><span>Cosine scores, skill gaps, alignment heatmaps, and static network layouts make alignment inspectable.</span></div>
       </div>
     </div>
   </section>
@@ -242,16 +258,24 @@
       <div class="section-hd"><h2>Core Calculations</h2><span class="badge badge-gray">0 to 1 scale</span></div>
       <div class="formula">
         <div><b>Cosine similarity</b></div>
-        <div>cos(A, B) = (A . B) / (||A|| * ||B||)</div>
+        <div>\[
+          \cos(A, B) = \frac{A \cdot B}{\lVert A \rVert \times \lVert B \rVert}
+        \]</div>
         <br>
         <div><b>Course semantic score</b></div>
-        <div>semantic = mean(top_k(module_job_cosines))</div>
+        <div>\[
+          \operatorname{semantic} = \operatorname{mean}\left(\operatorname{top}_k(\operatorname{moduleJobCosines})\right)
+        \]</div>
         <br>
         <div><b>Skill coverage</b></div>
-        <div>skill = matched_job_skills / unique_job_skills</div>
+        <div>\[
+          \operatorname{skillCoverage} = \frac{\left|\operatorname{matchedJobSkills}\right|}{\max\left(1, \left|\operatorname{uniqueJobSkills}\right|\right)}
+        \]</div>
         <br>
         <div><b>Final score</b></div>
-        <div>final = ((0.75 * semantic) + (0.25 * skill)) / (0.75 + 0.25)</div>
+        <div>\[
+          \operatorname{final} = \frac{(0.75 \times \operatorname{semantic}) + (0.25 \times \operatorname{skillCoverage})}{0.75 + 0.25}
+        \]</div>
       </div>
       <p class="method-text mt-4">Scores are clamped between 0 and 1, then displayed as percentages for interpretation.</p>
     </div>
@@ -259,9 +283,59 @@
 
   <section class="method-two">
     <div class="card">
-      <div class="section-hd"><h2>Visual Interpretation</h2><span class="badge badge-gold">Score distribution</span></div>
-      <p class="method-text">The score distribution groups all course-to-job scores into bands. High concentration in the right-hand bands suggests stronger curriculum-to-market alignment.</p>
-      <div class="viz-strip" aria-label="Example score distribution">
+      <div class="section-hd"><h2>School Skill Matrix Calculations</h2><span class="badge badge-gold">Evidence counts</span></div>
+      <p class="method-text">
+        The School Skill Matrix is calculated from the currently selected result set. A skill is first refined into a business-school label, then counted across course-to-job comparisons.
+      </p>
+      <div class="math-card mt-4">
+        <div class="math-line">\[
+          D_s = C_s + G_s
+        \]</div>
+        <div class="math-note"><strong>Demand evidence</strong> \(D_s\) equals covered evidence \(C_s\) plus gap evidence \(G_s\) for skill \(s\).</div>
+
+        <div class="math-line">\[
+          \operatorname{GapPercent}_s = \frac{G_s}{\max(1, D_s)} \times 100
+        \]</div>
+        <div class="math-note"><strong>Gap %</strong> shows the share of demand evidence where the skill is missing from the matched course.</div>
+
+        <div class="math-line">\[
+          \operatorname{CoveragePercent}_s = \frac{C_s}{\max(1, D_s)} \times 100
+        \]</div>
+        <div class="math-note"><strong>Coverage %</strong> shows the share of demand evidence where the course already contains that skill.</div>
+
+        <div class="math-line">\[
+          \operatorname{GapBarWidth}_s = \frac{G_s}{\max_j(G_j)} \times 100
+        \]</div>
+        <div class="math-note"><strong>Bar width</strong> is relative to the largest missing-evidence skill in the selected school or current filter.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Example Reading</h2><span class="badge badge-gray">Business analytics</span></div>
+      <p class="method-text">
+        If business analytics shows Demand evidence 189, Covered 0, Gap evidence 189, then the matrix is saying every analysed course-to-job comparison demanding that refined skill lacked matching curriculum evidence.
+      </p>
+      <div class="formula mt-4">
+        <div><b>Demand evidence</b></div>
+        <div>\(D = 0 + 189 = 189\)</div>
+        <br>
+        <div><b>Gap percentage</b></div>
+        <div>\(\frac{189}{189} \times 100 = 100\%\)</div>
+        <br>
+        <div><b>Coverage percentage</b></div>
+        <div>\(\frac{0}{189} \times 100 = 0\%\)</div>
+      </div>
+      <p class="method-text mt-4">
+        Jobs counts distinct job adverts in the selected result set. Courses covered counts distinct courses where that skill was found as matched evidence.
+      </p>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>Visual Interpretation</h2><span class="badge badge-gold">Alignment heatmap</span></div>
+      <p class="method-text">The alignment heatmap groups course-to-job matches into score bands per course. Darker cells show where a course has more evidence in that band, while the average column flags mismatch risk.</p>
+      <div class="viz-strip" aria-label="Example alignment heatmap">
         <div class="viz-row"><div class="viz-label">0-20</div><div class="viz-track"><div class="viz-fill" style="width:18%;"></div></div><div class="text-mono text-sm">18</div></div>
         <div class="viz-row"><div class="viz-label">20-40</div><div class="viz-track"><div class="viz-fill" style="width:32%;"></div></div><div class="text-mono text-sm">32</div></div>
         <div class="viz-row"><div class="viz-label">40-60</div><div class="viz-track"><div class="viz-fill" style="width:64%;"></div></div><div class="text-mono text-sm">64</div></div>
@@ -334,4 +408,14 @@
     </div>
   </section>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)'], ['$', '$']], displayMath: [['\\[', '\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
 {% endblock %}

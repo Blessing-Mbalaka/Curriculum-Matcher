@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import timedelta
 
 from django.db import IntegrityError
@@ -26,11 +27,96 @@ from analysis.tasks import (
 
 
 STALE_TASK_MINUTES = 10
+BUSINESS_TECHNICAL_SKILL_EXCLUSIONS = {
+    "c++",
+    "c#",
+    "f#",
+    "rust",
+    "haskell",
+    "go",
+    "scala",
+    "kotlin",
+    "java",
+    "javascript",
+    "typescript",
+    "html",
+    "css",
+    "django",
+    "flask",
+    "j2ee",
+    "z/os",
+    "mainframe",
+    "kubernetes",
+    "devops",
+    "ci cd",
+    "ci/cd",
+    "sre",
+    "site reliability engineering",
+    "distributed systems",
+    "algorithms",
+    "encryption",
+    "tokenisation",
+    "tokenization",
+}
+BUSINESS_SKILL_LABELS = {
+    "data analysis": "business analytics",
+    "data analytics": "business analytics",
+    "data science": "business analytics",
+    "sql": "data-driven decision making",
+    "mysql": "data-driven decision making",
+    "postgresql": "data-driven decision making",
+    "databases": "data governance",
+    "python": "analytics automation",
+    "r": "analytics automation",
+    "machine learning": "AI strategy",
+    "artificial intelligence": "AI strategy",
+    "generative ai": "AI strategy",
+    "genai": "AI strategy",
+    "software engineering": "digital transformation",
+    "technical architecture": "digital transformation",
+    "enterprise architecture": "digital transformation",
+    "systems architecture": "digital transformation",
+    "cloud native": "digital transformation",
+    "cloud-native": "digital transformation",
+    "aws": "digital transformation",
+    "azure": "digital transformation",
+    "gcp": "digital transformation",
+    "google cloud": "digital transformation",
+    "security": "digital risk governance",
+    "web3": "digital transformation",
+    "defi": "fintech strategy",
+    "fintech": "fintech strategy",
+    "automation": "process automation",
+    "technical leadership": "digital leadership",
+    "technical strategy": "digital strategy",
+    "vendor evaluation": "vendor management",
+}
 
 
 def mark_stale_tasks():
     cutoff = timezone.now() - timedelta(minutes=STALE_TASK_MINUTES)
+    stale_ids = list(TaskRecord.objects.filter(
+        status__in=["PENDING", "STARTED"],
+        updated_at__lt=cutoff,
+    ).values_list("id", flat=True)[:50])
+    if not stale_ids:
+        return 0
+    return TaskRecord.objects.filter(id__in=stale_ids).update(
+        status="FAILURE",
+        progress=0,
+        notes="Task stopped updating. The background worker likely stopped or the dev server was restarted. Start it again.",
+        finished_at=timezone.now(),
+    )
+
+
+def mark_stale_task_if_needed(task):
+    if task.status not in ["PENDING", "STARTED"] or not task.updated_at:
+        return task
+    cutoff = timezone.now() - timedelta(minutes=STALE_TASK_MINUTES)
+    if task.updated_at >= cutoff:
+        return task
     TaskRecord.objects.filter(
+        id=task.id,
         status__in=["PENDING", "STARTED"],
         updated_at__lt=cutoff,
     ).update(
@@ -39,6 +125,8 @@ def mark_stale_tasks():
         notes="Task stopped updating. The background worker likely stopped or the dev server was restarted. Start it again.",
         finished_at=timezone.now(),
     )
+    task.refresh_from_db()
+    return task
 
 
 def task_debug_hint(notes):
@@ -70,6 +158,110 @@ def bounded_int(value, default, minimum, maximum):
     return max(minimum, min(maximum, parsed))
 
 
+def top_skill_names(counter, limit=5):
+    return [skill for skill, _count in counter.most_common(limit)]
+
+
+def refine_business_skill(skill):
+    normalized = (skill or "").strip().lower()
+    if normalized in BUSINESS_TECHNICAL_SKILL_EXCLUSIONS:
+        return None
+    return BUSINESS_SKILL_LABELS.get(normalized, skill)
+
+
+def refined_business_counter(counter):
+    refined = Counter()
+    for skill, count in counter.items():
+        label = refine_business_skill(skill)
+        if label:
+            refined[label] += count
+    return refined
+
+
+def refine_skill_rows_for_business(rows, limit=10):
+    refined = Counter()
+    for row in rows:
+        label = refine_business_skill(row["skill"])
+        if label:
+            refined[label] += row["frequency"]
+    return [
+        {"skill": skill, "frequency": frequency}
+        for skill, frequency in refined.most_common(limit)
+    ]
+
+
+def join_skill_names(skills):
+    if not skills:
+        return ""
+    if len(skills) == 1:
+        return skills[0]
+    return f"{', '.join(skills[:-1])} and {skills[-1]}"
+
+
+def recommendation_skill_insight(missing_counter, matched_counter):
+    missing = top_skill_names(refined_business_counter(missing_counter))
+    matched = top_skill_names(refined_business_counter(matched_counter), 4)
+    parts = []
+    if missing:
+        parts.append(f"Based on the analysed course-to-job data, the curriculum should strengthen {join_skill_names(missing)}.")
+    if matched:
+        parts.append(f"The current evidence already shows coverage in {join_skill_names(matched)}.")
+    if not parts:
+        parts.append("No repeated skill pattern is visible yet, so inspect the lowest-scoring job matches first.")
+    return " ".join(parts)
+
+
+def build_skill_suggestion_matrix(results, limit=8):
+    matrix = {}
+    for result in results:
+        matched_labels = {
+            label for label in (refine_business_skill(skill) for skill in (result.matched_skills or []))
+            if label
+        }
+        missing_labels = {
+            label for label in (refine_business_skill(skill) for skill in (result.missing_skills or []))
+            if label
+        }
+        for skill in matched_labels | missing_labels:
+            item = matrix.setdefault(skill, {
+                "job_ids": set(),
+                "covered_course_ids": set(),
+                "matched_pairs": set(),
+                "missing_pairs": set(),
+            })
+            item["job_ids"].add(result.job_id)
+            pair = (result.course_id, result.job_id)
+            if skill in matched_labels:
+                item["covered_course_ids"].add(result.course_id)
+                item["matched_pairs"].add(pair)
+            if skill in missing_labels:
+                item["missing_pairs"].add(pair)
+
+    max_gap = max((len(item["missing_pairs"]) for item in matrix.values()), default=1)
+    rows = []
+    for skill, item in matrix.items():
+        matched_count = len(item["matched_pairs"])
+        missing_count = len(item["missing_pairs"])
+        demand_count = matched_count + missing_count
+        coverage = round((matched_count / max(1, demand_count)) * 100)
+        gap_percent = round((missing_count / max(1, demand_count)) * 100)
+        rows.append({
+            "skill": skill,
+            "demand_count": demand_count,
+            "job_count": len(item["job_ids"]),
+            "course_count": len(item["covered_course_ids"]),
+            "matched_count": matched_count,
+            "missing_count": missing_count,
+            "coverage": coverage,
+            "gap_percent": gap_percent,
+            "gap_width": round((missing_count / max_gap) * 100),
+        })
+    return sorted(
+        rows,
+        key=lambda row: (-row["missing_count"], row["coverage"], row["skill"]),
+    )[:limit]
+
+
 class DashboardView(TemplateView):
     template_name = "dashboard/home.html"
 
@@ -93,6 +285,14 @@ class DashboardView(TemplateView):
         ctx["should_autostart_jobs"] = not ctx["live_task"] and not (latest_jobs_only and latest_jobs_only.status == "STOPPED")
         ctx["avg_score"] = (GapResult.objects.aggregate(v=Avg("similarity_score"))["v"] or 0) * 100
         ctx["latest_results"] = GapResult.objects.select_related("course", "job").order_by("-run__created_at", "-similarity_score")[:8]
+        ctx["network_schools"] = (
+            Course.objects
+            .exclude(university_name="")
+            .order_by("university_name")
+            .values_list("university_name", flat=True)
+            .distinct()
+        )
+        ctx["network_jobs"] = JobAdvert.objects.order_by("title").values("id", "title", "company")[:500]
         return ctx
 
 
@@ -263,16 +463,173 @@ class AnalysisResultsView(TemplateView):
             sel = runs.first()
 
         if sel:
-            ctx["selected_run"] = sel
-            ctx["results"] = (
+            school_filter = self.request.GET.get("school", "").strip()
+            threshold = bounded_int(self.request.GET.get("threshold"), 55, 0, 100)
+            all_results_qs = (
                 GapResult.objects
                 .filter(run=sel)
                 .select_related("course", "job")
-                .order_by("-similarity_score")[:300]
+                .order_by("-similarity_score")
             )
+            if school_filter:
+                all_results_qs = all_results_qs.filter(course__university_name=school_filter)
+            all_results = list(all_results_qs)
+
+            ctx["selected_run"] = sel
+            ctx["selected_school"] = school_filter
+            ctx["threshold"] = threshold
+            ctx["schools"] = (
+                Course.objects
+                .filter(gapresult__run=sel)
+                .exclude(university_name="")
+                .order_by("university_name")
+                .values_list("university_name", flat=True)
+                .distinct()
+            )
+            ctx["results"] = all_results[:300]
             ctx["job_skills"] = SkillMatrix.objects.filter(run=sel, source="jobs")[:20]
             ctx["course_skills"] = SkillMatrix.objects.filter(run=sel, source="courses")[:20]
+            visual_data = build_results_visual_data(all_results, threshold)
+            ctx.update(visual_data)
         return ctx
+
+
+def build_results_visual_data(results, threshold):
+    bands = [
+        {"key": "0-20", "low": 0, "high": 20},
+        {"key": "20-40", "low": 20, "high": 40},
+        {"key": "40-60", "low": 40, "high": 60},
+        {"key": "60-80", "low": 60, "high": 80},
+        {"key": "80-100", "low": 80, "high": 101},
+    ]
+    course_map = {}
+    school_map = {}
+    max_cell = 1
+
+    for result in results:
+        course = result.course
+        school = course.university_name or "Unassigned school"
+        score = result.similarity_percent
+        course_item = course_map.setdefault(course.id, {
+            "course": course,
+            "school": school,
+            "scores": [],
+            "matched_total": 0,
+            "missing_total": 0,
+            "matched_skills": Counter(),
+            "missing_skills": Counter(),
+            "cells": {band["key"]: 0 for band in bands},
+        })
+        course_item["scores"].append(score)
+        course_item["matched_total"] += len(result.matched_skills or [])
+        course_item["missing_total"] += len(result.missing_skills or [])
+        course_item["matched_skills"].update(result.matched_skills or [])
+        course_item["missing_skills"].update(result.missing_skills or [])
+        for band in bands:
+            if band["low"] <= score < band["high"]:
+                course_item["cells"][band["key"]] += 1
+                max_cell = max(max_cell, course_item["cells"][band["key"]])
+                break
+
+        school_item = school_map.setdefault(school, {
+            "scores": [],
+            "matched_total": 0,
+            "missing_total": 0,
+            "matched_skills": Counter(),
+            "missing_skills": Counter(),
+            "courses": set(),
+        })
+        school_item["scores"].append(score)
+        school_item["matched_total"] += len(result.matched_skills or [])
+        school_item["missing_total"] += len(result.missing_skills or [])
+        school_item["matched_skills"].update(result.matched_skills or [])
+        school_item["missing_skills"].update(result.missing_skills or [])
+        school_item["courses"].add(course.id)
+
+    heatmap_rows = []
+    scatter_points = []
+    course_recommendations = []
+    for item in sorted(course_map.values(), key=lambda value: value["course"].name):
+        scores = item["scores"]
+        avg_score = round(sum(scores) / max(1, len(scores)), 1)
+        mismatch = avg_score < threshold
+        cells = []
+        for band in bands:
+            count = item["cells"][band["key"]]
+            intensity = count / max_cell if max_cell else 0
+            cells.append({"band": band["key"], "count": count, "intensity": round(intensity, 3)})
+        heatmap_rows.append({
+            "course": item["course"],
+            "school": item["school"],
+            "avg_score": avg_score,
+            "mismatch": mismatch,
+            "cells": cells,
+        })
+        scatter_points.append({
+            "label": item["course"].code or item["course"].name,
+            "course": item["course"].name,
+            "school": item["school"],
+            "x": item["matched_total"],
+            "y": item["missing_total"],
+            "score": avg_score,
+        })
+        if mismatch:
+            skill_insight = recommendation_skill_insight(item["missing_skills"], item["matched_skills"])
+            suggested_skills = join_skill_names(top_skill_names(refined_business_counter(item["missing_skills"])))
+            course_recommendations.append({
+                "label": item["course"].code or item["course"].name,
+                "school": item["school"],
+                "score": avg_score,
+                "skills": suggested_skills,
+                "message": f"For this programme, the data suggests a curriculum refresh around {suggested_skills or 'the lowest-covered demand skills'}. {skill_insight} Review module outcomes, readings, projects, and assessment language around those demand areas.",
+            })
+
+    school_recommendations = []
+    school_summaries = []
+    for school, item in sorted(school_map.items()):
+        scores = item["scores"]
+        avg_score = round(sum(scores) / max(1, len(scores)), 1)
+        matched = item["matched_total"]
+        missing = item["missing_total"]
+        mismatch = avg_score < threshold or missing > matched
+        summary = {
+            "school": school,
+            "avg_score": avg_score,
+            "matched_total": matched,
+            "missing_total": missing,
+            "course_count": len(item["courses"]),
+            "mismatch": mismatch,
+        }
+        school_summaries.append(summary)
+        if mismatch:
+            if avg_score < threshold:
+                reason = f"Average score is {avg_score}%, below the {threshold}% threshold."
+            else:
+                reason = f"Missing skill evidence ({missing}) exceeds matched evidence ({matched})."
+            skill_insight = recommendation_skill_insight(item["missing_skills"], item["matched_skills"])
+            school_recommendations.append({
+                "school": school,
+                "score": avg_score,
+                "message": f"{reason} {skill_insight} Prioritise curriculum updates in modules linked to the job adverts with the highest missing-skill counts.",
+            })
+
+    if not school_recommendations and school_summaries:
+        best = max(school_summaries, key=lambda item: item["avg_score"])
+        school_recommendations.append({
+            "school": best["school"],
+            "score": best["avg_score"],
+            "message": "No curriculum is below the current threshold. Use the scatter plot to inspect outlier courses with high missing-skill counts before changing module content.",
+        })
+
+    return {
+        "score_bands": [band["key"] for band in bands],
+        "heatmap_rows": heatmap_rows,
+        "scatter_points": scatter_points,
+        "school_summaries": school_summaries,
+        "school_recommendations": school_recommendations,
+        "course_recommendations": course_recommendations[:12],
+        "skill_suggestion_matrix": build_skill_suggestion_matrix(results),
+    }
 
 
 class TaskListView(ListView):
@@ -288,8 +645,8 @@ class TaskListView(ListView):
 
 
 def task_status_api(request, pk):
-    mark_stale_tasks()
     r = get_object_or_404(TaskRecord, pk=pk)
+    r = mark_stale_task_if_needed(r)
     return JsonResponse({
         "id": r.id,
         "run_name": r.run_name,
@@ -303,7 +660,6 @@ def task_status_api(request, pk):
 
 
 def dashboard_metrics(request):
-    mark_stale_tasks()
     last_run = AnalysisRun.objects.first()
     visual_run = last_run
     if visual_run and not GapResult.objects.filter(run=visual_run).exists():
@@ -318,8 +674,10 @@ def dashboard_metrics(request):
     job_skills = []
     course_skills = []
     if visual_run:
-        job_skills = list(SkillMatrix.objects.filter(run=visual_run, source="jobs").values("skill", "frequency")[:10])
-        course_skills = list(SkillMatrix.objects.filter(run=visual_run, source="courses").values("skill", "frequency")[:10])
+        job_skill_rows = list(SkillMatrix.objects.filter(run=visual_run, source="jobs").values("skill", "frequency")[:30])
+        course_skill_rows = list(SkillMatrix.objects.filter(run=visual_run, source="courses").values("skill", "frequency")[:30])
+        job_skills = refine_skill_rows_for_business(job_skill_rows)
+        course_skills = refine_skill_rows_for_business(course_skill_rows)
 
     recent_tasks = []
     for task in TaskRecord.objects.order_by("-created_at").values("id", "run_name", "status", "progress", "notes")[:8]:
@@ -362,7 +720,16 @@ def similarity_network(request):
     visual_run = last_run
     if visual_run and not GapResult.objects.filter(run=visual_run).exists():
         visual_run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
-    qs = GapResult.objects.filter(run=visual_run).select_related("course", "job").order_by("-similarity_score")[:40] if visual_run else []
+    school_filter = request.GET.get("school", "").strip()
+    job_filter = bounded_int(request.GET.get("job"), 0, 0, 100000000) or None
+    qs = GapResult.objects.none()
+    if visual_run:
+        qs = GapResult.objects.filter(run=visual_run).select_related("course", "job")
+        if school_filter:
+            qs = qs.filter(course__university_name=school_filter)
+        if job_filter:
+            qs = qs.filter(job_id=job_filter)
+        qs = qs.order_by("-similarity_score")[:40]
     if nx:
         graph = nx.Graph()
         for r in qs:
