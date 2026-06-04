@@ -145,6 +145,7 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "id=\"similarityNetwork3d\"")
         self.assertContains(response, "id=\"similarityCrosstab\"")
         self.assertContains(response, "network-canvas-wrap is-3d")
+        self.assertContains(response, "Cosine similarity:")
 
     def test_results_page_renders_heatmap_scatter_and_suggestions(self):
         self.course.university_name = "University of Johannesburg"

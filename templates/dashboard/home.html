@@ -104,6 +104,15 @@
 .network-crosstab-cell { min-width:72px; height:42px; display:grid; place-items:center; border-radius:4px; border:1px solid rgba(11,11,11,.06); background:rgba(245,130,32, calc(.08 + var(--i) * .72)); font-family:var(--mono); font-size:11px; color:#111; }
 .network-crosstab-cell.empty { background:#f1f3f5; color:#a1a1aa; }
 .network-crosstab-empty { display:grid; place-items:center; height:100%; color:var(--muted); text-align:center; }
+.scene-tooltip {
+  color:#111 !important;
+  background:#fff !important;
+  border:1px solid var(--rule) !important;
+  border-radius:6px !important;
+  box-shadow:0 10px 28px rgba(11,11,11,.14) !important;
+  font-family:var(--sans) !important;
+  font-size:12px !important;
+}
 .network-empty {
   position:absolute;
   inset:0;
@@ -550,6 +559,10 @@ function render3DNetwork(graph) {
       .nodeLabel(node => `${node.group === 'course' ? 'Course' : 'Job'}: ${node.title || node.label}`)
       .nodeColor(node => node.group === 'course' ? '#111111' : '#f58220')
       .nodeVal(node => node.group === 'course' ? 7 : 5)
+      .linkLabel(link => {
+        const score = Math.round(Number(link.value || 0));
+        return `Cosine similarity: ${score}%`;
+      })
       .linkWidth(link => Math.max(1, Math.min(5, Number(link.value || 1) / 22)))
       .linkColor(link => Number(link.value || 0) >= 70 ? '#111111' : '#d47722')
       .linkOpacity(.46)
@@ -557,13 +570,38 @@ function render3DNetwork(graph) {
       .linkDirectionalParticleWidth(link => Number(link.value || 0) >= 70 ? 2 : 1)
       .nodeThreeObject(node => {
         if (!window.SpriteText) return null;
+        if (window.THREE) {
+          const group = new THREE.Group();
+          const isCourse = node.group === 'course';
+          const sphere = new THREE.Mesh(
+            new THREE.SphereGeometry(isCourse ? 5.5 : 4.8, 24, 24),
+            new THREE.MeshLambertMaterial({ color:isCourse ? '#111111' : '#f58220' })
+          );
+          sphere.userData = { label: node.label };
+          group.add(sphere);
+
+          const label = new SpriteText(node.label);
+          label.color = 'black';
+          label.backgroundColor = isCourse ? 'rgba(255, 241, 228, 0.96)' : 'rgba(255, 255, 255, 0.96)';
+          label.borderColor = isCourse ? '#f58220' : '#111111';
+          label.borderWidth = 0.5;
+          label.borderRadius = 3;
+          label.padding = 3;
+          label.textHeight = 4.2;
+          label.position.y = 11;
+          label.material?.color?.set?.('#111111');
+          group.add(label);
+          return group;
+        }
         const sprite = new SpriteText(node.label);
-        sprite.color = node.group === 'course' ? '#111111' : '#8a3f00';
-        sprite.textHeight = 5;
-        sprite.position.y = 9;
+        sprite.color = 'black';
+        sprite.backgroundColor = 'rgba(255,255,255,.96)';
+        sprite.padding = 3;
+        sprite.textHeight = 5.2;
+        sprite.material?.color?.set?.('#111111');
         return sprite;
       })
-      .nodeThreeObjectExtend(true);
+      .nodeThreeObjectExtend(false);
   }
   networkGraph3d.width(network3dContainer.clientWidth || 900);
   networkGraph3d.height(network3dContainer.clientHeight || 480);
@@ -588,7 +626,8 @@ function renderNetworkCrosstab(graph) {
     const cells = jobs.map(job => {
       const value = edgeMap.get(`${course.id}|${job.id}`) || edgeMap.get(`${job.id}|${course.id}`) || 0;
       const intensity = Math.max(0, Math.min(1, value / 100)).toFixed(2);
-      return `<td><div class="network-crosstab-cell ${value ? '' : 'empty'}" style="--i:${intensity};">${value ? Math.round(value) : ''}</div></td>`;
+      const title = value ? `Cosine similarity: ${Math.round(value)}%` : 'No similarity link';
+      return `<td><div class="network-crosstab-cell ${value ? '' : 'empty'}" title="${title}" style="--i:${intensity};">${value ? Math.round(value) : ''}</div></td>`;
     }).join('');
     return `<tr><th class="network-crosstab-course" title="${escapeHtml(course.title || course.label)}">${escapeHtml(course.label)}</th>${cells}</tr>`;
   }).join('');
