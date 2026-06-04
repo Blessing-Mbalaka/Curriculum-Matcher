@@ -47,6 +47,7 @@ class JobAdvert(models.Model):
     salary_min = models.IntegerField(null=True, blank=True)
     salary_max = models.IntegerField(null=True, blank=True)
     skills_extracted = models.JSONField(default=list, blank=True)
+    skill_entities = models.JSONField(default=list, blank=True)
     vector = models.JSONField(default=list, blank=True)
     source_payload = models.JSONField(default=dict, blank=True)
     date_posted = models.DateField(null=True, blank=True)

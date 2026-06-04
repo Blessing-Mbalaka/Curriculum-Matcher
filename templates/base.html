@@ -629,6 +629,9 @@ body {
         <a href="{% url 'analysis-results' %}" class="nav-item {% if 'analysis' in request.resolver_match.url_name %}active{% endif %}">
           <span class="nav-dot"></span> Gap Results
         </a>
+        <a href="{% url 'data-export' %}" class="nav-item {% if 'data-export' in request.resolver_match.url_name or 'skill-entity' in request.resolver_match.url_name or 'job-skill-export' in request.resolver_match.url_name %}active{% endif %}">
+          <span class="nav-dot"></span> Data Export
+        </a>
         <a href="{% url 'methodology' %}" class="nav-item {% if request.resolver_match.url_name == 'methodology' %}active{% endif %}">
           <span class="nav-dot"></span> Methodology
         </a>

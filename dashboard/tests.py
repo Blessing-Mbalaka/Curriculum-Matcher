@@ -1,9 +1,12 @@
+from datetime import date
+
 from django.test import TestCase
 from django.urls import reverse
 
 from analysis.models import AnalysisRun, GapResult, SkillMatrix
 from analysis.models import TaskRecord
 from courses.models import Course
+from courses.models import Module
 from dashboard.views import recommendation_skill_insight, refine_skill_rows_for_business
 from jobs.models import JobAdvert
 
@@ -33,6 +36,26 @@ class DashboardVisualDataTests(TestCase):
         self.assertEqual(data["visual_run"]["id"], older_run.id)
         self.assertEqual(data["average_score"], 82.0)
         self.assertEqual(sum(data["score_buckets"]), 1)
+
+    def test_metrics_skill_chart_uses_actual_extracted_skill_names(self):
+        run = AnalysisRun.objects.create(name="Run with skill matrix", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.82,
+            matched_skills=["data analysis"],
+            missing_skills=["sql"],
+        )
+        SkillMatrix.objects.create(run=run, source="jobs", skill="data analysis", frequency=4)
+        SkillMatrix.objects.create(run=run, source="courses", skill="data analysis", frequency=2)
+
+        response = self.client.get(reverse("dashboard-metrics"))
+        data = response.json()
+
+        self.assertEqual(data["job_skills"][0]["skill"], "data analysis")
+        self.assertEqual(data["course_skills"][0]["skill"], "data analysis")
+        self.assertNotEqual(data["job_skills"][0]["skill"], "business analytics")
 
     def test_network_keeps_previous_visual_data_and_returns_static_positions(self):
         older_run = AnalysisRun.objects.create(name="Run with data", status="done")
@@ -91,6 +114,35 @@ class DashboardVisualDataTests(TestCase):
         self.assertNotIn("OTH101", node_labels)
         self.assertNotIn("Operations Manager", node_labels)
 
+    def test_network_cluster_mode_returns_skill_entity_nodes(self):
+        self.job.skill_entities = [{
+            "id": "skill-strategy",
+            "skill": "strategy",
+            "source": "ner",
+            "confidence": 0.96,
+            "mention_count": 2,
+        }]
+        self.job.skills_extracted = ["strategy"]
+        self.job.save(update_fields=["skill_entities", "skills_extracted"])
+        run = AnalysisRun.objects.create(name="Cluster network", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.82,
+            matched_skills=["strategy"],
+            missing_skills=[],
+        )
+
+        response = self.client.get(reverse("similarity-network"), {"cluster": "1"})
+        data = response.json()
+
+        self.assertTrue(data["cluster"])
+        skill_nodes = [node for node in data["nodes"] if node["group"] == "skill"]
+        self.assertEqual(skill_nodes[0]["entity_id"], "skill-strategy")
+        self.assertEqual(skill_nodes[0]["skill"], "strategy")
+        self.assertTrue(any(edge["from"] == f"job-{self.job.id}" and edge["to"] == "skill-strategy" for edge in data["edges"]))
+
     def test_queue_analysis_ajax_creates_database_only_task_record(self):
         response = self.client.post(
             reverse("run-analysis"),
@@ -133,6 +185,8 @@ class DashboardVisualDataTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Best Course-to-Job Matches")
         self.assertContains(response, "Export Report")
+        self.assertContains(response, "Download Visual CSV")
+        self.assertContains(response, reverse("dashboard-visual-export"))
         self.assertContains(response, "match-tile")
         self.assertContains(response, "Course to job advert")
         self.assertContains(response, "Filter network by school")
@@ -142,11 +196,209 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "id=\"network3dBtn\"")
         self.assertContains(response, "id=\"networkCrosstabBtn\"")
         self.assertContains(response, "Cross-tab")
+        self.assertContains(response, "plotly-2.35.2.min.js")
+        self.assertContains(response, "Course-to-Job Similarity Cross-tab")
+        self.assertContains(response, "type:'heatmap'")
         self.assertContains(response, "3d-force-graph")
         self.assertContains(response, "id=\"similarityNetwork3d\"")
         self.assertContains(response, "id=\"similarityCrosstab\"")
         self.assertContains(response, "network-canvas-wrap is-3d")
         self.assertContains(response, "Cosine similarity:")
+
+    def test_data_export_page_renders_skill_evidence_and_exports_csv(self):
+        self.job.category = "Business Strategy"
+        self.job.date_posted = date(2025, 5, 20)
+        self.job.skill_entities = [{
+            "id": "skill-strategy",
+            "chunk_id": "chunk-job-strategy",
+            "skill": "strategy",
+            "label": "SKILL",
+            "tier": "explicit",
+            "skill_type": "business",
+            "source": "ner",
+            "confidence": 0.96,
+            "mention_count": 1,
+        }]
+        self.job.save(update_fields=["category", "date_posted", "skill_entities"])
+        Module.objects.create(
+            course=self.course,
+            name="Strategy module",
+            content="Leadership and strategy",
+            skills_extracted=["leadership"],
+        )
+
+        response = self.client.get(reverse("data-export"))
+        csv_response = self.client.get(reverse("skill-entity-export"))
+
+        self.assertContains(response, "Data Export")
+        self.assertContains(response, "Export Visual CSV")
+        self.assertContains(response, "Job Skills")
+        self.assertContains(response, "Course Skills")
+        self.assertContains(response, "Merged Skills")
+        self.assertContains(response, "NER skill evidence extracted from job adverts")
+        self.assertContains(response, "Combined job and course NER skill evidence")
+        self.assertContains(response, "All sectors")
+        self.assertContains(response, "All job titles")
+        self.assertContains(response, "Business Strategy")
+        self.assertContains(response, "Strategy Manager")
+        self.assertContains(response, "Run Time Series Forecast")
+        self.assertContains(response, "Semantic Skill Clusters")
+        self.assertContains(response, "Full vector view")
+        self.assertContains(response, "id=\"fullVectorViewBtn\"")
+        self.assertContains(response, "Loading vector view...")
+        self.assertContains(response, "Explain top skill evidence chart")
+        self.assertContains(response, "Explain skill heatmap")
+        self.assertContains(response, "Explain skill evidence network")
+        self.assertContains(response, "Explain skill demand forecast")
+        self.assertContains(response, "Explain semantic skill clusters")
+        self.assertContains(response, "skillForecastPlot")
+        self.assertContains(response, "skillClusterPlot")
+        self.assertContains(response, "clusterResetBtn")
+        self.assertContains(response, "Click a skill to focus its neighbourhood")
+        self.assertContains(response, "Connected skills are highlighted")
+        self.assertContains(response, "extracted_year")
+        self.assertContains(response, "Evidence ID")
+        self.assertContains(response, "Strategy module")
+        self.assertContains(csv_response, "chunk_id,entity_id,skill")
+        self.assertContains(csv_response, "sector,job_title,extracted_date,extracted_year")
+        self.assertContains(csv_response, "skill-strategy")
+        visual_csv_response = self.client.get(reverse("data-export-visual-export"))
+        self.assertContains(visual_csv_response, "visual,dimension_1,dimension_2,dimension_3,value,notes")
+        self.assertContains(visual_csv_response, "top_skill_evidence")
+        self.assertContains(visual_csv_response, "skill_heatmap")
+
+        job_response = self.client.get(reverse("data-export"), {"source": "job"})
+        course_response = self.client.get(reverse("data-export"), {"source": "module"})
+        sector_response = self.client.get(reverse("data-export"), {"sector": "Business Strategy"})
+        title_response = self.client.get(reverse("data-export"), {"job_title": "Strategy Manager"})
+
+        self.assertContains(job_response, "source=job")
+        self.assertContains(job_response, "chunk-job-strategy")
+        self.assertNotContains(job_response, "Strategy module")
+        self.assertContains(course_response, "source=module")
+        self.assertContains(course_response, "Strategy module")
+        self.assertNotContains(course_response, "chunk-job-strategy")
+        self.assertContains(sector_response, "chunk-job-strategy")
+        self.assertNotContains(sector_response, "Strategy module")
+        self.assertContains(title_response, "chunk-job-strategy")
+        self.assertNotContains(title_response, "Strategy module")
+
+    def test_skill_vector_space_page_and_api_use_extracted_skill_nodes(self):
+        self.job.category = "Business Strategy"
+        self.job.skill_entities = [
+            {
+                "id": "skill-data-analysis",
+                "skill": "data analysis",
+                "label": "SKILL",
+                "skill_type": "technical",
+                "source": "ner",
+                "confidence": 0.95,
+                "mention_count": 2,
+            },
+            {
+                "id": "skill-data-analytics",
+                "skill": "data analytics",
+                "label": "SKILL",
+                "skill_type": "technical",
+                "source": "ner",
+                "confidence": 0.91,
+                "mention_count": 1,
+            },
+        ]
+        self.job.save(update_fields=["category", "skill_entities"])
+        Module.objects.create(
+            course=self.course,
+            name="Analytics module",
+            content="Data analysis for managers",
+            skill_entities=[{
+                "id": "module-skill-data-analysis",
+                "skill": "data analysis",
+                "label": "SKILL",
+                "skill_type": "technical",
+                "source": "ner",
+                "confidence": 0.88,
+                "mention_count": 1,
+            }],
+        )
+
+        page_response = self.client.get(reverse("skill-vector-space"))
+        api_response = self.client.get(reverse("skill-vector-space-api"))
+        data = api_response.json()
+
+        self.assertEqual(page_response.status_code, 200)
+        self.assertContains(page_response, "Skill Vector Space")
+        self.assertContains(page_response, "3d-force-graph")
+        self.assertContains(page_response, "vectorApiUrl")
+        self.assertContains(page_response, "cosine-similarity strands")
+        self.assertContains(page_response, "vectorSkillFilter")
+        self.assertContains(page_response, "vectorSectorFilter")
+        self.assertContains(page_response, "vectorJobFilter")
+        self.assertContains(page_response, "vectorCourseFilter")
+        self.assertContains(page_response, "vectorExtractorFilter")
+        self.assertContains(page_response, "clearVectorFiltersBtn")
+        self.assertContains(page_response, "Download Visual CSV")
+        self.assertContains(page_response, "Explain semantic vector space")
+        self.assertContains(page_response, "Root job and course nodes connect to extracted skills")
+        self.assertTrue(data["has_visual_data"])
+        self.assertIn("job-root", {node["group"] for node in data["nodes"]})
+        self.assertIn("course-root", {node["group"] for node in data["nodes"]})
+        self.assertIn("skill", {node["group"] for node in data["nodes"]})
+        self.assertIn("data analysis", {node["label"] for node in data["nodes"]})
+        self.assertTrue(any(node.get("description") for node in data["nodes"] if node["group"] != "skill"))
+        self.assertIn("evidence", {edge["group"] for edge in data["edges"]})
+        self.assertIn("similarity", {edge["group"] for edge in data["edges"]})
+        self.assertTrue(any("Cosine similarity" in edge["title"] for edge in data["edges"]))
+        csv_response = self.client.get(reverse("skill-vector-space-export"))
+        self.assertContains(csv_response, "record_type,id,source,target,label,group,value")
+        self.assertContains(csv_response, "node")
+        self.assertContains(csv_response, "edge")
+
+    def test_data_export_infers_sector_when_source_has_no_category(self):
+        self.job.title = "Cyber Security Analyst"
+        self.job.description = "Cloud security, compliance, risk governance, and SQL reporting."
+        self.job.category = ""
+        self.job.skill_entities = [{
+            "id": "skill-security-governance",
+            "skill": "security governance",
+            "label": "SKILL",
+            "skill_type": "technical",
+            "source": "ner",
+        }]
+        self.job.save(update_fields=["title", "description", "category", "skill_entities"])
+        Module.objects.create(
+            course=self.course,
+            name="Financial accounting analytics",
+            content="Accounting, tax, budget control, and finance reporting.",
+            skills_extracted=["accounting"],
+        )
+
+        response = self.client.get(reverse("skill-vector-space-api"))
+        data = response.json()
+        sectors = {node["sector"] for node in data["nodes"] if node.get("sector")}
+
+        self.assertIn("Cybersecurity and Risk", sectors)
+        self.assertIn("Finance and Accounting", sectors)
+        self.assertNotIn("Unclassified", sectors)
+
+    def test_skill_entity_update_converts_legacy_skill_to_reviewed_entity(self):
+        self.job.skills_extracted = ["leadership"]
+        self.job.save(update_fields=["skills_extracted"])
+
+        response = self.client.post(reverse("skill-entity-update"), {
+            "source_type": "job",
+            "source_id": self.job.id,
+            "entity_id": "skill-leadership",
+            "chunk_id": f"job-{self.job.id}-skill-leadership",
+            "skill": "executive leadership",
+            "label": "SKILL",
+            "tier": "reviewed",
+            "skill_type": "soft",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.skills_extracted, ["executive leadership"])
+        self.assertEqual(self.job.skill_entities[0]["label_status"], "reviewed")
 
     def test_results_page_renders_heatmap_scatter_and_suggestions(self):
         self.course.university_name = "University of Johannesburg"
@@ -169,6 +421,24 @@ class DashboardVisualDataTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Course Alignment Heatmap")
+        self.assertContains(response, "Download Visual CSV")
+        self.assertContains(response, "Course-to-Job Gap Heatmap")
+        self.assertContains(response, "Ranked jobs")
+        self.assertContains(response, "Matrix heatmap")
+        self.assertContains(response, "Show matrix job labels")
+        self.assertContains(response, "gapVisualMode")
+        self.assertContains(response, "gapCourseFilter")
+        self.assertContains(response, "gapJobLegend")
+        self.assertContains(response, "data-tab=\"heatmapTab\"")
+        self.assertContains(response, "gapPlotlyHeatmap")
+        self.assertContains(response, "gap-heatmap-data")
+        self.assertContains(response, "plotly-2.35.2.min.js")
+        self.assertContains(response, "type:'heatmap'")
+        self.assertContains(response, "Explain course alignment heatmap")
+        self.assertContains(response, "Explain matched versus missing scatter")
+        self.assertContains(response, "Explain course-to-job gap heatmap")
+        self.assertContains(response, "Each number inside a cell is the count of job adverts")
+        self.assertContains(response, "The number shown in hover is the match percentage, not a count")
         self.assertContains(response, "Matched vs Missing Scatter")
         self.assertContains(response, "Curriculum Recommendations")
         self.assertContains(response, "Mismatch risk")
@@ -188,8 +458,35 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Demand evidence = covered evidence + gap evidence")
         self.assertContains(response, "Gap % = gap evidence / demand evidence")
         self.assertContains(response, "Export Report")
+        csv_response = self.client.get(reverse("analysis-visual-export"), {"run": run.id, "school": "University of Johannesburg", "threshold": "55"})
+        self.assertContains(csv_response, "visual,run,course_id,course,school,job_id,job")
+        self.assertContains(csv_response, "course_to_job_gap_heatmap")
+        self.assertContains(csv_response, "matched_vs_missing_scatter")
+
+    def test_dashboard_visual_csv_export_returns_source_rows(self):
+        run = AnalysisRun.objects.create(name="Run with dashboard visuals", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.72,
+            matched_skills=["strategy"],
+            missing_skills=["analytics"],
+        )
+        SkillMatrix.objects.create(run=run, source="jobs", skill="strategy", frequency=3)
+
+        response = self.client.get(reverse("dashboard-visual-export"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "visual,run,source,course_id,course,job_id,job")
+        self.assertContains(response, "score_bucket_summary")
+        self.assertContains(response, "skill_demand_vs_curriculum")
+        self.assertContains(response, "course_to_job_network_edge")
 
     def test_technical_report_export_returns_word_document(self):
+        from docx import Document
+        from io import BytesIO
+
         self.course.university_name = "University of Johannesburg"
         self.course.country = "South Africa"
         self.course.save(update_fields=["university_name", "country"])
@@ -212,6 +509,12 @@ class DashboardVisualDataTests(TestCase):
         )
         self.assertIn("curriculummatch-technical-report.docx", response["Content-Disposition"])
         self.assertGreater(len(response.content), 1000)
+        document = Document(BytesIO(response.content))
+        text = "\n".join(paragraph.text for paragraph in document.paragraphs)
+        self.assertIn("Methodology Visual Pipeline", text)
+        self.assertIn("Figure 1. End-to-end methodology pipeline.", text)
+        self.assertIn("Figure 2. Evidence funnel.", text)
+        self.assertIn("Figure 3. High-level graph legend.", text)
 
     def test_business_recommendations_refine_technical_skill_noise(self):
         insight = recommendation_skill_insight(

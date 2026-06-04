@@ -433,6 +433,7 @@ def import_candidate(run, candidate):
         if not content:
             continue
         try:
+            skill_entities = extractor.extract_entities(content, document_id=f"module-{course.code}-{index}")
             obj, module_created = Module.objects.get_or_create(
                 course=course,
                 name=name,
@@ -441,15 +442,18 @@ def import_candidate(run, candidate):
                     "order": index,
                     "university_name": candidate["school_name"],
                     "country": "South Africa",
-                    "skills_extracted": extractor.extract(content),
+                    "skills_extracted": sorted({entity["skill"] for entity in skill_entities}),
+                    "skill_entities": skill_entities,
                 },
             )
         except IntegrityError:
             continue
         if not module_created and len(content) > len(obj.content):
+            skill_entities = extractor.extract_entities(content, document_id=f"module-{obj.id}")
             obj.content = content
-            obj.skills_extracted = extractor.extract(content)
-            obj.save(update_fields=["content", "skills_extracted"])
+            obj.skills_extracted = sorted({entity["skill"] for entity in skill_entities})
+            obj.skill_entities = skill_entities
+            obj.save(update_fields=["content", "skills_extracted", "skill_entities"])
         module_count += 1 if module_created else 0
 
     ScrapedCourseCandidate.objects.create(

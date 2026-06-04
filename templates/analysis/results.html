@@ -2,6 +2,9 @@
 {% block title %}Gap Results - CurriculumMatch{% endblock %}
 {% block page_title %}Gap Analysis Results{% endblock %}
 {% block topbar_actions %}
+  {% if selected_run %}
+  <a href="{% url 'analysis-visual-export' %}?run={{ selected_run.id }}{% if selected_school %}&school={{ selected_school|urlencode }}{% endif %}&threshold={{ threshold }}" class="btn btn-outline">Download Visual CSV</a>
+  {% endif %}
   <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm" data-results-url="{% url 'analysis-results' %}">
     {% csrf_token %}
@@ -33,6 +36,49 @@
 .tab-panel.active { display:block; }
 .results-visuals { display:grid; grid-template-columns:1fr; gap:20px; margin-bottom:24px; }
 .chart-box { height:380px; }
+.plotly-heatmap-box { min-height:520px; border:1px solid var(--rule); border-radius:8px; background:#fff; overflow:hidden; }
+.plotly-heatmap-empty { display:grid; place-items:center; min-height:420px; color:var(--muted); text-align:center; }
+.heatmap-note { color:var(--muted); font-size:12px; margin-top:8px; }
+.heatmap-controls {
+  display:grid;
+  grid-template-columns:minmax(160px,.8fr) minmax(190px,1fr) minmax(130px,.55fr) auto;
+  gap:10px;
+  align-items:end;
+  margin:14px 0;
+}
+.heatmap-check {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  min-height:38px;
+  color:var(--muted);
+  font-size:12px;
+}
+.heatmap-colour-legend {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:10px 0 14px;
+  color:var(--muted);
+  font-size:12px;
+}
+.heatmap-ramp { flex:1; height:10px; border-radius:999px; background:linear-gradient(90deg,#f1f3f5,#fff2df,#ffbd80,#f58220,#0b0b0b); }
+.job-index-legend {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:6px 12px;
+  max-height:170px;
+  overflow:auto;
+  padding:12px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fffaf5;
+  font-size:11px;
+}
+.job-index-item { display:flex; gap:7px; min-width:0; color:var(--muted); }
+.job-index-key { font-family:var(--mono); font-weight:800; color:var(--gold-dark); flex:0 0 auto; }
+.job-index-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .heatmap-wrap { overflow:auto; padding-bottom:6px; }
 .heatmap-table { min-width:760px; border-collapse:separate; border-spacing:3px; width:100%; background:transparent; }
 .heatmap-table th { background:transparent; border:0; text-align:center; padding:8px 6px; }
@@ -85,7 +131,7 @@
 .mini-skill-help code { font-family:var(--mono); font-size:11px; color:#9a4a08; }
 .detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
 .detail-panel.open { display:table-row; }
-@media (max-width:1000px) { .results-visuals, .results-filters { grid-template-columns:1fr; } }
+@media (max-width:1000px) { .results-visuals, .results-filters, .heatmap-controls { grid-template-columns:1fr; } }
 @media (max-width:640px) { .mini-skill-row { grid-template-columns:1fr; } .mini-skill-counts { grid-column:auto; } .mini-skill-meta { text-align:left; } }
 </style>
 {% endblock %}
@@ -143,6 +189,7 @@
 
   <div class="results-tabs">
     <button class="results-tab active" type="button" data-tab="visualsTab">Visuals</button>
+    <button class="results-tab" type="button" data-tab="heatmapTab">Heatmap</button>
     <button class="results-tab" type="button" data-tab="suggestionsTab">Suggestions</button>
     <button class="results-tab" type="button" data-tab="matrixTab">Matrix</button>
   </div>
@@ -152,7 +199,16 @@
       <div class="card">
         <div class="section-hd">
           <h2>Course Alignment Heatmap</h2>
-          <span class="badge badge-gold">Score bands</span>
+          <div class="flex gap-2">
+            <span class="badge badge-gold">Score bands</span>
+            <span class="graph-insight">
+              <button class="graph-insight-btn" type="button" aria-label="Explain course alignment heatmap"></button>
+              <span class="graph-insight-popover">
+                <span class="graph-insight-title">Heatmap reading</span>
+                <span class="graph-insight-body">Each row is a course. Each number inside a cell is the count of job adverts that matched that course in that score band. For example, 3 under 20-40% means three jobs had weak alignment with that course. Pale cells mean zero or few matches; deeper orange means more matches in that band. A course with many numbers in low-score columns is a likely gap area.</span>
+              </span>
+            </span>
+          </div>
         </div>
         <div class="heatmap-wrap">
           <table class="heatmap-table">
@@ -184,7 +240,16 @@
       <div class="card">
         <div class="section-hd">
           <h2>Matched vs Missing Scatter</h2>
-          <span class="badge badge-gray">Course points</span>
+          <div class="flex gap-2">
+            <span class="badge badge-gray">Course points</span>
+            <span class="graph-insight">
+              <button class="graph-insight-btn" type="button" aria-label="Explain matched versus missing scatter"></button>
+              <span class="graph-insight-popover">
+                <span class="graph-insight-title">Scatter reading</span>
+                <span class="graph-insight-body">Each dot is a course. Further right means more matched job skills; higher up means more missing job skills. The upper-left area is the biggest warning zone.</span>
+              </span>
+            </span>
+          </div>
         </div>
         <div class="chart-box"><canvas id="gapChart"></canvas></div>
       </div>
@@ -207,6 +272,62 @@
           {% empty %}<p class="text-muted text-sm">No data yet.</p>{% endfor %}
         </div>
       </div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="heatmapTab">
+    <div class="card">
+      <div class="section-hd">
+        <div>
+          <h2>Course-to-Job Gap Heatmap</h2>
+          <div class="heatmap-note">Use Ranked jobs for many adverts. Use Matrix when you need a course-by-job grid. Colours always show match strength.</div>
+        </div>
+        <div class="flex gap-2">
+          <span class="badge badge-gold">Plotly</span>
+          <span class="graph-insight">
+            <button class="graph-insight-btn" type="button" aria-label="Explain course-to-job gap heatmap"></button>
+            <span class="graph-insight-popover">
+              <span class="graph-insight-title">Gap visual reading</span>
+              <span class="graph-insight-body">Ranked jobs is easier when there are many job names: each dot is one job match, the x-position is match %, colour is match strength, and dot size grows when more job skills are missing. Matrix view uses compact J1, J2 labels on the axis and lists the full job names underneath. The number shown in hover is the match percentage, not a count.</span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="heatmap-controls">
+        <div>
+          <label class="form-label" for="gapVisualMode">Visual type</label>
+          <select class="form-control" id="gapVisualMode">
+            <option value="ranked">Ranked jobs</option>
+            <option value="matrix">Matrix heatmap</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="gapCourseFilter">Course</label>
+          <select class="form-control" id="gapCourseFilter">
+            <option value="">All courses</option>
+          </select>
+        </div>
+        <div>
+          <label class="form-label" for="gapTopLimit">Show</label>
+          <select class="form-control" id="gapTopLimit">
+            <option value="25">Top 25</option>
+            <option value="50">Top 50</option>
+            <option value="100">Top 100</option>
+            <option value="500">All</option>
+          </select>
+        </div>
+        <label class="heatmap-check">
+          <input type="checkbox" id="gapShowLabels">
+          Show matrix job labels
+        </label>
+      </div>
+      <div class="heatmap-colour-legend">
+        <span>Weak match 0%</span>
+        <span class="heatmap-ramp" aria-hidden="true"></span>
+        <span>Strong match 100%</span>
+      </div>
+      <div class="plotly-heatmap-box" id="gapPlotlyHeatmap"></div>
+      <div class="job-index-legend mt-4" id="gapJobLegend" aria-label="Job label legend"></div>
     </div>
   </div>
 
@@ -419,9 +540,12 @@ setTimeout(() => location.reload(), 5000);
 </script>
 {% if selected_run %}
 {{ scatter_points|json_script:"scatter-data" }}
+{{ plotly_heatmap_rows|json_script:"gap-heatmap-data" }}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const scatterPoints = JSON.parse(document.getElementById('scatter-data').textContent);
+const gapHeatmapRows = JSON.parse(document.getElementById('gap-heatmap-data')?.textContent || '[]');
 const ctx = document.getElementById('gapChart');
 if (ctx) {
   new Chart(ctx, {
@@ -454,6 +578,235 @@ if (ctx) {
     }
   });
 }
+
+const gapVisualMode = document.getElementById('gapVisualMode');
+const gapCourseFilter = document.getElementById('gapCourseFilter');
+const gapTopLimit = document.getElementById('gapTopLimit');
+const gapShowLabels = document.getElementById('gapShowLabels');
+const gapJobLegend = document.getElementById('gapJobLegend');
+
+function shortLabel(value, limit = 34) {
+  const text = String(value || '');
+  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
+}
+
+function escapeHeatmapHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;',
+  }[char]));
+}
+
+function populateGapCourseFilter() {
+  if (!gapCourseFilter || !gapHeatmapRows.length) return;
+  const current = gapCourseFilter.value;
+  const courses = [...new Map(gapHeatmapRows.map(row => [row.course_id, row])).values()]
+    .sort((a, b) => String(a.course).localeCompare(String(b.course)));
+  gapCourseFilter.innerHTML = '<option value="">All courses</option>';
+  courses.forEach(row => {
+    const option = document.createElement('option');
+    option.value = row.course_id;
+    option.textContent = row.course_name || row.course;
+    gapCourseFilter.appendChild(option);
+  });
+  gapCourseFilter.value = courses.some(row => String(row.course_id) === current) ? current : '';
+}
+
+function selectedGapRows() {
+  const selectedCourse = gapCourseFilter?.value || '';
+  const limit = Number(gapTopLimit?.value || 25);
+  const rows = selectedCourse
+    ? gapHeatmapRows.filter(row => String(row.course_id) === selectedCourse)
+    : gapHeatmapRows;
+  return rows
+    .slice()
+    .sort((a, b) => Number(a.score || 0) - Number(b.score || 0) || String(a.job).localeCompare(String(b.job)))
+    .slice(0, limit);
+}
+
+function renderGapJobLegend(rows) {
+  if (!gapJobLegend) return;
+  const jobs = [...new Map(rows.map(row => [row.job_id, row])).values()];
+  if (!jobs.length) {
+    gapJobLegend.innerHTML = '';
+    return;
+  }
+  gapJobLegend.innerHTML = jobs.map((row, index) => `
+    <div class="job-index-item" title="${escapeHeatmapHtml(row.job)}">
+      <span class="job-index-key">J${index + 1}</span>
+      <span class="job-index-name">${escapeHeatmapHtml(row.job)}${row.company ? ` - ${escapeHeatmapHtml(row.company)}` : ''}</span>
+    </div>
+  `).join('');
+}
+
+function renderRankedGapPlot(container, rows) {
+  const ranked = rows.slice().sort((a, b) => Number(a.score || 0) - Number(b.score || 0));
+  const height = Math.max(520, ranked.length * 24 + 150);
+  Plotly.newPlot(container, [{
+    type:'scatter',
+    mode:'markers',
+    x:ranked.map(row => row.score),
+    y:ranked.map(row => shortLabel(row.job, 54)),
+    customdata:ranked.map(row => [
+      row.course_name,
+      row.school,
+      row.job,
+      row.company || 'No company',
+      row.matched_count,
+      row.missing_count,
+      row.matched || 'None',
+      row.missing || 'None',
+    ]),
+    marker:{
+      size:ranked.map(row => Math.max(9, Math.min(30, 9 + Number(row.missing_count || 0) * 2))),
+      color:ranked.map(row => row.score),
+      cmin:0,
+      cmax:100,
+      colorscale:[
+        [0, '#f1f3f5'],
+        [.2, '#fff2df'],
+        [.45, '#ffbd80'],
+        [.7, '#f58220'],
+        [1, '#0b0b0b'],
+      ],
+      line:{ color:'#111', width:.7 },
+      colorbar:{ title:'Match %', thickness:14 },
+    },
+    hovertemplate:[
+      '<b>%{customdata[2]}</b>',
+      'Course: %{customdata[0]}',
+      'School: %{customdata[1]}',
+      'Company: %{customdata[3]}',
+      'Score: %{x}%',
+      'Matched skills: %{customdata[4]}',
+      'Missing skills: %{customdata[5]}',
+      '<br><b>Matched</b>: %{customdata[6]}',
+      '<b>Missing</b>: %{customdata[7]}',
+      '<extra></extra>',
+    ].join('<br>'),
+  }], {
+    title:{ text:'Ranked Job Matches', font:{ size:15 } },
+    paper_bgcolor:'#ffffff',
+    plot_bgcolor:'#ffffff',
+    height,
+    margin:{ l:270, r:42, t:48, b:70 },
+    font:{ family:'Inter, Arial', size:12, color:'#101010' },
+    xaxis:{ title:'Match score %', range:[0, 100], gridcolor:'#f2eee8' },
+    yaxis:{ title:'Job adverts', automargin:true },
+    shapes:[
+      { type:'rect', xref:'x', yref:'paper', x0:0, x1:40, y0:0, y1:1, fillcolor:'rgba(158,47,24,.05)', line:{ width:0 }, layer:'below' },
+      { type:'rect', xref:'x', yref:'paper', x0:40, x1:70, y0:0, y1:1, fillcolor:'rgba(245,130,32,.05)', line:{ width:0 }, layer:'below' },
+      { type:'rect', xref:'x', yref:'paper', x0:70, x1:100, y0:0, y1:1, fillcolor:'rgba(35,107,53,.05)', line:{ width:0 }, layer:'below' },
+    ],
+    annotations:[
+      { x:20, y:1.04, xref:'x', yref:'paper', text:'Weak', showarrow:false, font:{ size:11, color:'#8f2f24' } },
+      { x:55, y:1.04, xref:'x', yref:'paper', text:'Medium', showarrow:false, font:{ size:11, color:'#9a4a08' } },
+      { x:85, y:1.04, xref:'x', yref:'paper', text:'Strong', showarrow:false, font:{ size:11, color:'#236b35' } },
+    ],
+  }, {
+    responsive:true,
+    displayModeBar:true,
+    displaylogo:false,
+    modeBarButtonsToRemove:['select2d', 'lasso2d'],
+  });
+}
+
+function renderMatrixGapPlot(container, rows) {
+  const courses = [...new Map(rows.map(row => [row.course_id, row])).values()]
+    .map(row => ({ id:row.course_id, label:row.course, title:row.course_name, school:row.school }));
+  const jobs = [...new Map(rows.map(row => [row.job_id, row])).values()]
+    .map((row, index) => ({ id:row.job_id, label:row.job, key:`J${index + 1}`, company:row.company }));
+  const rowMap = new Map(rows.map(row => [`${row.course_id}|${row.job_id}`, row]));
+  const z = courses.map(course => jobs.map(job => rowMap.get(`${course.id}|${job.id}`)?.score ?? null));
+  const customdata = courses.map(course => jobs.map(job => {
+    const row = rowMap.get(`${course.id}|${job.id}`);
+    return row ? [
+      row.course_name,
+      row.school,
+      row.job,
+      row.company || 'No company',
+      row.matched_count,
+      row.missing_count,
+      row.matched || 'None',
+      row.missing || 'None',
+    ] : ['', '', '', '', 0, 0, 'None', 'None'];
+  }));
+  Plotly.newPlot(container, [{
+    type:'heatmap',
+    x:jobs.map(job => gapShowLabels?.checked ? shortLabel(job.label, 22) : job.key),
+    y:courses.map(course => course.label),
+    z,
+    customdata,
+    colorscale:[
+      [0, '#f1f3f5'],
+      [.2, '#fff2df'],
+      [.45, '#ffbd80'],
+      [.7, '#f58220'],
+      [1, '#0b0b0b'],
+    ],
+    zmin:0,
+    zmax:100,
+    xgap:2,
+    ygap:2,
+    colorbar:{ title:'Match %', thickness:14 },
+    hovertemplate:[
+      '<b>%{customdata[0]}</b>',
+      'School: %{customdata[1]}',
+      'Job: %{customdata[2]}',
+      'Company: %{customdata[3]}',
+      'Score: %{z}%',
+      'Matched skills: %{customdata[4]}',
+      'Missing skills: %{customdata[5]}',
+      '<br><b>Matched</b>: %{customdata[6]}',
+      '<b>Missing</b>: %{customdata[7]}',
+      '<extra></extra>',
+    ].join('<br>'),
+  }], {
+    title:{ text:'Course-to-Job Matrix', font:{ size:15 } },
+    paper_bgcolor:'#ffffff',
+    plot_bgcolor:'#ffffff',
+    height:Math.max(520, courses.length * 36 + 220),
+    margin:{ l:150, r:36, t:48, b:gapShowLabels?.checked ? 190 : 90 },
+    font:{ family:'Inter, Arial', size:12, color:'#101010' },
+    xaxis:{ title:'Job adverts', tickangle:gapShowLabels?.checked ? -35 : 0, automargin:true },
+    yaxis:{ title:'Courses', automargin:true },
+  }, {
+    responsive:true,
+    displayModeBar:true,
+    displaylogo:false,
+    modeBarButtonsToRemove:['select2d', 'lasso2d'],
+  });
+}
+
+function renderGapPlotlyHeatmap() {
+  const container = document.getElementById('gapPlotlyHeatmap');
+  if (!container) return;
+  if (!window.Plotly) {
+    container.innerHTML = '<div class="plotly-heatmap-empty">Plotly could not load for the heatmap.</div>';
+    return;
+  }
+  if (!gapHeatmapRows.length) {
+    container.innerHTML = '<div class="plotly-heatmap-empty">No course-job heatmap data for the current filter.</div>';
+    return;
+  }
+  const rows = selectedGapRows();
+  renderGapJobLegend(rows);
+  if (gapVisualMode?.value === 'matrix') {
+    renderMatrixGapPlot(container, rows);
+  } else {
+    renderRankedGapPlot(container, rows);
+  }
+}
+populateGapCourseFilter();
+[gapVisualMode, gapCourseFilter, gapTopLimit, gapShowLabels].forEach(control => {
+  control?.addEventListener('change', renderGapPlotlyHeatmap);
+});
+document.querySelector('[data-tab="heatmapTab"]')?.addEventListener('click', () => {
+  setTimeout(renderGapPlotlyHeatmap, 50);
+});
 </script>
 {% endif %}
 {% endblock %}

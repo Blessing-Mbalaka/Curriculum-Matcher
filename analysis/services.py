@@ -64,13 +64,16 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max
         module_data = {}
         module_items = list(module_map.items())
         for index, (mid, text) in enumerate(module_items, start=1):
+            skill_entities = skill_extractor.extract_entities(text, document_id=f"module-{mid}")
             module_data[mid] = {
                 "vector": scorer.vectorize(text),
-                "skills": skill_extractor.extract(text),
+                "skills": sorted({entity["skill"] for entity in skill_entities}),
+                "skill_entities": skill_entities,
             }
             Module.objects.filter(id=mid).update(
                 vector=module_data[mid]["vector"].tolist(),
                 skills_extracted=module_data[mid]["skills"],
+                skill_entities=module_data[mid]["skill_entities"],
             )
             if should_report(index, len(module_items)):
                 report(25 + int(20 * index / max(1, len(module_items))), f"Processed {index}/{len(module_items)} modules...")
@@ -80,13 +83,16 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max
         job_data = {}
         job_items = list(job_map.items())
         for index, (jid, text) in enumerate(job_items, start=1):
+            skill_entities = skill_extractor.extract_entities(text, document_id=f"job-{jid}")
             job_data[jid] = {
                 "vector": scorer.vectorize(text),
-                "skills": skill_extractor.extract(text),
+                "skills": sorted({entity["skill"] for entity in skill_entities}),
+                "skill_entities": skill_entities,
             }
             JobAdvert.objects.filter(id=jid).update(
                 vector=job_data[jid]["vector"].tolist(),
                 skills_extracted=job_data[jid]["skills"],
+                skill_entities=job_data[jid]["skill_entities"],
             )
             if should_report(index, len(job_items)):
                 report(45 + int(20 * index / max(1, len(job_items))), f"Processed {index}/{len(job_items)} job adverts...")

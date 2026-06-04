@@ -7,6 +7,7 @@ from django.views.generic import ListView
 from .models import Course, Module
 from .forms import CourseForm, ModuleForm
 from .file_parsing import parse_uploaded_files
+from .skill_extraction import ensure_module_skills, extract_module_skills
 
 
 class CourseListView(ListView):
@@ -22,7 +23,11 @@ class CourseListView(ListView):
             queryset = queryset.filter(university_name=university)
         if country:
             queryset = queryset.filter(country=country)
-        return queryset.distinct()
+        courses = list(queryset.distinct())
+        for course in courses:
+            for module in course.modules.all():
+                ensure_module_skills(module)
+        return courses
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -67,7 +72,9 @@ class CourseCreateView(View):
 class CourseDetailView(View):
     def get(self, request, pk):
         course = get_object_or_404(Course, pk=pk)
-        modules = course.modules.all()
+        modules = list(course.modules.all())
+        for module in modules:
+            ensure_module_skills(module)
         return render(request, "courses/detail.html", {
             "course": course,
             "modules": modules,
@@ -123,6 +130,8 @@ class ModuleCreateView(View):
                     parse_uploaded_files(form.cleaned_data.get("content_files") or []),
                 )
                 module.save()
+                extract_module_skills(module)
+                module.save(update_fields=["skill_entities", "skills_extracted"])
                 messages.success(request, f"Module '{module.name}' added.")
             except ValidationError as exc:
                 form.add_error("content_files", exc)
@@ -156,6 +165,8 @@ class ModuleEditView(View):
                     parse_uploaded_files(form.cleaned_data.get("content_files") or []),
                 )
                 module.save()
+                extract_module_skills(module)
+                module.save(update_fields=["skill_entities", "skills_extracted"])
                 messages.success(request, "Module updated.")
                 return redirect("course-detail", pk=module.course.pk)
             except ValidationError as exc:

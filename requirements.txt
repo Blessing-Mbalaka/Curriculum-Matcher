@@ -12,3 +12,5 @@ en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_
 pypdf>=4.2
 python-docx>=1.1
 python-pptx>=0.6.23
+plotly>=5.24
+kaleido>=0.2.1,<1.0

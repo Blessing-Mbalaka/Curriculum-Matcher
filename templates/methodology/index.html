@@ -2,6 +2,7 @@
 {% block title %}Methodology - CurriculumMatch{% endblock %}
 {% block page_title %}Methodology{% endblock %}
 {% block topbar_actions %}
+  <a href="{% url 'data-export' %}" class="btn btn-outline">Data Export</a>
   <a href="{% url 'analysis-results' %}" class="btn btn-outline">View Results</a>
   <a href="{% url 'home' %}" class="btn btn-primary">Dashboard</a>
 {% endblock %}
@@ -65,6 +66,110 @@
 }
 .pipeline-step strong { display:block; font-size:13px; }
 .pipeline-step span { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
+.flow-section {
+  display:grid;
+  gap:18px;
+}
+.flow-map {
+  display:grid;
+  grid-template-columns:repeat(6, minmax(130px, 1fr));
+  gap:18px;
+  align-items:stretch;
+}
+.flow-node {
+  position:relative;
+  min-height:154px;
+  padding:16px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  display:grid;
+  align-content:start;
+  gap:9px;
+}
+.flow-node:not(:last-child)::after {
+  content:"";
+  position:absolute;
+  top:50%;
+  right:-23px;
+  width:28px;
+  height:12px;
+  transform:translateY(-50%);
+  background:
+    linear-gradient(90deg, var(--gold), var(--gold)) left center / 20px 2px no-repeat,
+    linear-gradient(135deg, transparent 45%, var(--gold) 47% 55%, transparent 57%) right center / 12px 12px no-repeat;
+  z-index:2;
+}
+.flow-icon {
+  width:38px;
+  height:38px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:#0b0b0b;
+  color:var(--gold);
+  font-weight:800;
+  font-family:var(--mono);
+  font-size:12px;
+}
+.flow-node h3 { margin:0; font-size:14px; }
+.flow-node p { margin:0; color:var(--muted); font-size:12px; line-height:1.45; }
+.flow-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:2px; }
+.flow-tag { font-size:10px; font-family:var(--mono); color:#4d4538; background:#fbfaf6; border:1px solid var(--rule); border-radius:999px; padding:3px 7px; }
+.funnel-wrap {
+  display:grid;
+  grid-template-columns:minmax(260px, .75fr) minmax(320px, 1fr);
+  gap:18px;
+  align-items:center;
+}
+.funnel {
+  display:grid;
+  gap:8px;
+  justify-items:center;
+}
+.funnel-stage {
+  min-height:50px;
+  display:grid;
+  place-items:center;
+  padding:10px 20px;
+  color:#fff;
+  text-align:center;
+  font-weight:800;
+  font-size:13px;
+  border-radius:8px;
+  clip-path:polygon(4% 0, 96% 0, 86% 100%, 14% 100%);
+  box-shadow:0 10px 24px rgba(11,11,11,.08);
+}
+.funnel-stage span { display:block; font-weight:500; font-size:11px; color:rgba(255,255,255,.74); margin-top:3px; }
+.funnel-stage:nth-child(1) { width:100%; background:#0b0b0b; }
+.funnel-stage:nth-child(2) { width:88%; background:#3c3327; }
+.funnel-stage:nth-child(3) { width:76%; background:#7b4b16; }
+.funnel-stage:nth-child(4) { width:64%; background:#b85f09; }
+.funnel-stage:nth-child(5) { width:52%; background:var(--gold-dark); }
+.flow-checklist { display:grid; gap:10px; }
+.flow-check {
+  display:grid;
+  grid-template-columns:30px 1fr;
+  gap:10px;
+  align-items:start;
+  padding:11px 0;
+  border-bottom:1px solid var(--rule);
+}
+.flow-check:last-child { border-bottom:0; }
+.flow-check b { font-size:13px; }
+.flow-check span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+.flow-dot {
+  width:24px;
+  height:24px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#fff7ed;
+  color:var(--gold-dark);
+  border:1px solid #ffbd80;
+  font-size:12px;
+  font-weight:900;
+}
 .method-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; }
 .method-two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 .formula {
@@ -169,10 +274,13 @@
 .method-table td:first-child { font-weight:700; width:160px; }
 .badge-line { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 @media (max-width:1100px) {
-  .method-hero, .method-grid, .method-two { grid-template-columns:1fr; }
+  .method-hero, .method-grid, .method-two, .funnel-wrap { grid-template-columns:1fr; }
+  .flow-map { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .flow-node::after { display:none; }
 }
 @media (max-width:700px) {
   .method-title { font-size:28px; }
+  .flow-map { grid-template-columns:1fr; }
   .calc-row, .viz-row { grid-template-columns:1fr; }
 }
 </style>
@@ -191,6 +299,8 @@
         <span class="badge badge-gold">Normalized embeddings</span>
         <span class="badge badge-gray">Cosine similarity</span>
         <span class="badge badge-gray">Skill coverage</span>
+        <span class="badge badge-gray">NER review</span>
+        <span class="badge badge-gray">Forecasting</span>
         <span class="badge badge-gray">Network visualisation</span>
       </div>
     </div>
@@ -205,11 +315,84 @@
       </div>
       <div class="pipeline-step">
         <div class="step-num">03</div>
-        <div><strong>Embed and extract skills</strong><span>Documents become semantic vectors; spaCy phrase matching and aliases extract explicit skill terms.</span></div>
+        <div><strong>Embed and extract skills</strong><span>Documents become semantic vectors; spaCy phrase matching, aliases, NER entities, and lightweight phrase mining extract explicit skill terms.</span></div>
       </div>
       <div class="pipeline-step">
         <div class="step-num">04</div>
-        <div><strong>Score and visualise</strong><span>Cosine scores, skill gaps, alignment heatmaps, and static network layouts make alignment inspectable.</span></div>
+        <div><strong>Score, filter, and visualise</strong><span>Cosine scores, skill gaps, Plotly heatmaps, forecasts, source tiles, and semantic skill clusters make alignment inspectable.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card flow-section">
+    <div class="section-hd">
+      <div>
+        <h2>End-to-End Pipeline</h2>
+        <p class="method-text">The full workflow moves from raw curriculum and labour-market evidence through extraction, scoring, review, visualisation, and curriculum decision support.</p>
+      </div>
+      <span class="badge badge-gold">Pipeline + funnel</span>
+    </div>
+
+    <div class="flow-map" aria-label="End-to-end CurriculumMatch pipeline">
+      <div class="flow-node">
+        <div class="flow-icon">01</div>
+        <h3>Ingest Evidence</h3>
+        <p>Courses, modules, uploads, scraped pages, CSV jobs, manual jobs, and Adzuna adverts enter the same evidence store.</p>
+        <div class="flow-tags"><span class="flow-tag">PDF/DOCX/PPTX</span><span class="flow-tag">CSV</span><span class="flow-tag">Adzuna</span></div>
+      </div>
+      <div class="flow-node">
+        <div class="flow-icon">02</div>
+        <h3>Clean and Deduplicate</h3>
+        <p>Text is normalised, job sections are parsed, stale tasks are handled, and duplicate adverts are skipped using IDs and fingerprints.</p>
+        <div class="flow-tags"><span class="flow-tag">normalise</span><span class="flow-tag">fingerprint</span></div>
+      </div>
+      <div class="flow-node">
+        <div class="flow-icon">03</div>
+        <h3>Extract Skills</h3>
+        <p>spaCy NER, phrase matching, aliases, regex fallback, and phrase mining create reviewable skill entities with evidence metadata.</p>
+        <div class="flow-tags"><span class="flow-tag">NER</span><span class="flow-tag">skill type</span><span class="flow-tag">sector</span></div>
+      </div>
+      <div class="flow-node">
+        <div class="flow-icon">04</div>
+        <h3>Embed and Compare</h3>
+        <p>Modules and jobs are embedded as normalised vectors, compared with cosine similarity, and blended with explicit skill coverage.</p>
+        <div class="flow-tags"><span class="flow-tag">vectors</span><span class="flow-tag">cosine</span></div>
+      </div>
+      <div class="flow-node">
+        <div class="flow-icon">05</div>
+        <h3>Analyse Gaps</h3>
+        <p>Matched skills, missing skills, school skill matrices, sector filters, job-title filters, and score bands make the evidence interpretable.</p>
+        <div class="flow-tags"><span class="flow-tag">coverage</span><span class="flow-tag">gaps</span></div>
+      </div>
+      <div class="flow-node">
+        <div class="flow-icon">06</div>
+        <h3>Visualise and Export</h3>
+        <p>Dashboards, Plotly heatmaps, forecasts, semantic clusters, vector space, and CSV exports support review and reporting.</p>
+        <div class="flow-tags"><span class="flow-tag">Plotly</span><span class="flow-tag">CSV</span><span class="flow-tag">forecast</span></div>
+      </div>
+    </div>
+
+    <div class="funnel-wrap">
+      <div class="funnel" aria-label="Evidence funnel">
+        <div class="funnel-stage">Raw evidence<span>course text, uploads, jobs, scraped pages</span></div>
+        <div class="funnel-stage">Structured records<span>modules, adverts, dates, sectors, titles</span></div>
+        <div class="funnel-stage">Extracted skill evidence<span>NER entities, aliases, confidence, review status</span></div>
+        <div class="funnel-stage">Comparable signals<span>embeddings, cosine scores, skill coverage</span></div>
+        <div class="funnel-stage">Actionable outputs<span>gaps, clusters, forecasts, exports, reports</span></div>
+      </div>
+      <div class="flow-checklist">
+        <div class="flow-check">
+          <div class="flow-dot">✓</div>
+          <div><b>Every visual starts from stored evidence</b><span>Charts, heatmaps, clusters, vector nodes, and CSV rows are built from job/module records and extracted skill entities.</span></div>
+        </div>
+        <div class="flow-check">
+          <div class="flow-dot">✓</div>
+          <div><b>Every match has two signals</b><span>Semantic similarity captures meaning in the text; explicit skill coverage confirms whether named job skills are present in curriculum evidence.</span></div>
+        </div>
+        <div class="flow-check">
+          <div class="flow-dot">✓</div>
+          <div><b>Every decision remains reviewable</b><span>Analysts can inspect source rows, edit extracted skill labels, export CSV evidence, and open the vector space to inspect skill associations.</span></div>
+        </div>
       </div>
     </div>
   </section>
@@ -229,6 +412,45 @@
       <div class="card-label">Processing layer</div>
       <h2 class="mini-heading">Analysis runs</h2>
       <p class="method-text">A run snapshots current courses and jobs, vectorises content, extracts skills, stores match rows, and records task progress so visualisations can preserve the last usable result while new work is running.</p>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>NER Skill Evidence</h2><span class="badge badge-gold">Reviewable records</span></div>
+      <p class="method-text">
+        Jobs and course modules store both simple skill lists and richer NER skill entities. Each entity can include a stable skill ID, label, tier, skill type, source method, confidence, mention count, pattern, position signature, extracted text, and review status.
+      </p>
+      <div class="calc-list">
+        <div class="calc-row">
+          <b>Job skills</b>
+          <span>Adzuna and CSV job imports run the same spaCy-backed extractor and preserve job title, sector/category, posting date, and extraction year for filtering and trend analysis.</span>
+        </div>
+        <div class="calc-row">
+          <b>Course skills</b>
+          <span>Module content and uploaded documents are extracted into the same entity shape, then rolled up to the course page and compared against job-market demand.</span>
+        </div>
+        <div class="calc-row">
+          <b>Review loop</b>
+          <span>The Data Export table lets analysts edit skill, NER label, tier, and skill type inline. Reviewed skill evidence updates the stored job or module JSON.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Data Export Views</h2><span class="badge badge-gray">Jobs, courses, merged</span></div>
+      <p class="method-text">
+        Data Export has three source tiles: Job Skills, Course Skills, and Merged Skills. The same Plotly visualisations and chunk table are filtered by source, skill type, sector, actual job title, and free-text search.
+      </p>
+      <div class="formula mt-4">
+        <div><b>Context fields</b></div>
+        <div>sector = job category or NER-labelled sector / industry</div>
+        <div>job_title = actual job advert title</div>
+        <div>extracted_year = year from posting date or uploaded/stored document timestamp</div>
+      </div>
+      <p class="method-text mt-4">
+        CSV exports carry the same context columns, so offline analysis can reproduce the filtered view, including technical evidence IDs and entity IDs.
+      </p>
     </div>
   </section>
 
@@ -333,8 +555,8 @@
 
   <section class="method-two">
     <div class="card">
-      <div class="section-hd"><h2>Visual Interpretation</h2><span class="badge badge-gold">Alignment heatmap</span></div>
-      <p class="method-text">The alignment heatmap groups course-to-job matches into score bands per course. Darker cells show where a course has more evidence in that band, while the average column flags mismatch risk.</p>
+      <div class="section-hd"><h2>Visual Interpretation</h2><span class="badge badge-gold">Plotly heatmaps</span></div>
+      <p class="method-text">The analysis results score-band heatmap groups course-to-job matches into score bands per course. The number inside each cell is a count of job adverts in that score band for that course; darker orange means more job adverts fall in that band. The Plotly course-to-job heatmap is different: each cell is one course matched to one job advert, and colour represents the match percentage, from pale weak alignment to dark strong alignment.</p>
       <div class="viz-strip" aria-label="Example alignment heatmap">
         <div class="viz-row"><div class="viz-label">0-20</div><div class="viz-track"><div class="viz-fill" style="width:18%;"></div></div><div class="text-mono text-sm">18</div></div>
         <div class="viz-row"><div class="viz-label">20-40</div><div class="viz-track"><div class="viz-fill" style="width:32%;"></div></div><div class="text-mono text-sm">32</div></div>
@@ -346,7 +568,7 @@
 
     <div class="card">
       <div class="section-hd"><h2>Network Reading</h2><span class="badge badge-gray">Static layout</span></div>
-      <p class="method-text">The network is built from course nodes, job nodes, and weighted similarity edges. A fixed seeded layout is used so nodes do not move while analysts inspect the graph.</p>
+      <p class="method-text">The network is built from course nodes, job nodes, optional skill entity nodes, and weighted similarity edges. Analysts can switch between 2D, 3D, clustered skill-entity mode, and the Plotly Cross-tab heatmap without changing the underlying filtered graph data.</p>
       <div class="network-demo" aria-label="Example static similarity network">
         <div class="edge strong" style="left:140px;top:78px;width:230px;transform:rotate(12deg);"></div>
         <div class="edge medium" style="left:140px;top:154px;width:220px;transform:rotate(-15deg);"></div>
@@ -356,6 +578,43 @@
         <div class="node node-course" style="left:48px;top:202px;">OPS</div>
         <div class="node node-job" style="right:52px;top:82px;">Manager</div>
         <div class="node node-job" style="right:44px;top:176px;">Analyst</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>Skill Forecasting</h2><span class="badge badge-gold">Time series</span></div>
+      <p class="method-text">
+        The Data Export forecast button groups filtered skill evidence by extraction year. For jobs, the preferred date is the job posting date; otherwise the system uses the stored creation timestamp. For course modules and uploaded documents, the module/document storage timestamp anchors the year.
+      </p>
+      <div class="math-card mt-4">
+        <div class="math-line">\[
+          y_{s,t} = \operatorname{count}(\operatorname{skill}=s, \operatorname{year}=t)
+        \]</div>
+        <div class="math-note">For each top skill \(s\), the chart plots observed yearly chunk counts \(y_{s,t}\).</div>
+
+        <div class="math-line">\[
+          \hat{y}_{s,t+1} = \max(0, y_{s,t} + \operatorname{slope}(y_s))
+        \]</div>
+        <div class="math-note">The one-year projection is a lightweight trend forecast designed for visual exploration, not a statistical guarantee.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Semantic Skill Clustering</h2><span class="badge badge-gray">Association view</span></div>
+      <p class="method-text">
+        The Data Export clustering view groups top skills by semantic association. The current visual combines shared skill tokens, skill type, sector, and co-occurrence in filtered NER rows. Larger nodes indicate more chunk evidence; colors indicate skill type.
+      </p>
+      <div class="formula mt-4">
+        <div><b>Association score</b></div>
+        <div>token overlap + skill-type match + sector match</div>
+        <br>
+        <div><b>Node size</b></div>
+        <div>count of filtered NER records for that skill</div>
+        <br>
+        <div><b>Node color</b></div>
+        <div>dominant skill type: technical, business, soft, domain, or exclude</div>
       </div>
     </div>
   </section>
@@ -384,6 +643,18 @@
           <tr>
             <td>Network edge width</td>
             <td>Thicker edges represent stronger similarity percentages. The layout is static so repeated refreshes do not disrupt interpretation.</td>
+          </tr>
+          <tr>
+            <td>Cross-tab heatmap</td>
+            <td>Rows are courses, columns are job adverts, and cell color is the cosine similarity percentage for that course-to-job edge.</td>
+          </tr>
+          <tr>
+            <td>Forecast line</td>
+            <td>Solid segments show observed yearly skill evidence. Dotted segments show the next-year projection from the current filtered evidence.</td>
+          </tr>
+          <tr>
+            <td>Skill clusters</td>
+            <td>Nearby skills share terms, sector context, skill type, or repeated co-occurrence. Use clusters as a navigation aid before reviewing individual skill evidence.</td>
           </tr>
         </tbody>
       </table>

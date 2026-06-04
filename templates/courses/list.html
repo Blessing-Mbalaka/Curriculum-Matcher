@@ -51,7 +51,22 @@
     </div>
     <div class="flex gap-2 text-sm text-muted">
       <span>{{ course.modules.count }} module{{ course.modules.count|pluralize }}</span>
+      {% if course.skills_extracted %}
+      <span class="badge badge-green">{{ course.skills_extracted|length }} skill{{ course.skills_extracted|length|pluralize }}</span>
+      {% else %}
+      <span>No skills</span>
+      {% endif %}
     </div>
+    {% if course.skills_extracted %}
+    <div class="chip-list">
+      {% for skill in course.skills_extracted|slice:":6" %}
+        <span class="chip chip-match">{{ skill }}</span>
+      {% endfor %}
+      {% if course.skills_extracted|length > 6 %}
+        <span class="chip">+{{ course.skills_extracted|length|add:"-6" }} more</span>
+      {% endif %}
+    </div>
+    {% endif %}
     <div class="flex gap-2" style="margin-top:auto;padding-top:8px;border-top:1px solid var(--rule);">
       <a href="{% url 'course-detail' course.pk %}" class="btn btn-outline btn-sm">View / Edit</a>
       <form method="post" action="{% url 'course-delete' course.pk %}" onsubmit="return confirm('Delete {{ course.name }}?')">

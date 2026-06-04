@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 REQUIRED_COLS = {"title", "description"}
 
 
+def _skill_extractor():
+    from analysis.spacyskillextraction import SpacySkillExtractor
+
+    return SpacySkillExtractor()
+
+
 class AdzunaAPIError(Exception):
     def __init__(self, message, status_code=None, retryable=True, limit_reached=False):
         super().__init__(message)
@@ -58,6 +64,7 @@ def import_from_csv(file_bytes: bytes) -> dict:
 
     saved, skipped, errors = 0, 0, []
     batch = []
+    extractor = _skill_extractor()
 
     for i, raw_row in enumerate(reader, start=2):
         # Re-key with cleaned names
@@ -84,6 +91,16 @@ def import_from_csv(file_bytes: bytes) -> dict:
                 continue
             sections = extract_advert_sections(description)
             metadata = extract_advert_metadata(description)
+            analysis_text = "\n\n".join(part for part in [
+                title,
+                row.get("company", ""),
+                metadata.get("recruiter") or row.get("recruiter", ""),
+                row.get("category", ""),
+                row.get("summary", "") or sections["summary"],
+                row.get("position_info", "") or sections["position_info"],
+                description,
+            ] if part)
+            skill_entities = extractor.extract_entities(analysis_text, document_id=f"job-fingerprint-{fingerprint}")
             batch.append(JobAdvert(
                 title=title[:255],
                 company=row.get("company", "")[:255],
@@ -101,6 +118,8 @@ def import_from_csv(file_bytes: bytes) -> dict:
                 fingerprint=fingerprint,
                 salary_min=_to_int(row.get("salary_min")),
                 salary_max=_to_int(row.get("salary_max")),
+                skills_extracted=sorted({entity["skill"] for entity in skill_entities}),
+                skill_entities=skill_entities,
                 date_posted=parse_advert_date(row.get("date_posted") or metadata.get("date_posted")),
             ))
             saved += 1
@@ -154,6 +173,7 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
     results = data.get("results", [])
     saved = 0
     duplicates = 0
+    extractor = _skill_extractor()
 
     if progress_callback:
         progress_callback({
@@ -180,6 +200,16 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
         location_name = (location_name or metadata.get("location", ""))[:255]
         category = _value(item, "category", "label") or _value(item, "category", "tag") or ""
         fingerprint = job_fingerprint(title, company, location_name, description, recruiter, job_reference)
+        analysis_text = "\n\n".join(part for part in [
+            title,
+            company,
+            recruiter,
+            category,
+            sections["summary"],
+            sections["position_info"],
+            description,
+        ] if part)
+        skill_entities = extractor.extract_entities(analysis_text, document_id=f"job-fingerprint-{fingerprint}")
 
         if (ext_id and JobAdvert.objects.filter(source="adzuna", external_id=ext_id).exists()) or JobAdvert.objects.filter(fingerprint=fingerprint).exists():
             duplicates += 1
@@ -214,6 +244,8 @@ def fetch_adzuna_page(keyword: str, location: str = "south africa", page: int = 
             fingerprint=fingerprint,
             salary_min=item.get("salary_min"),
             salary_max=item.get("salary_max"),
+            skills_extracted=sorted({entity["skill"] for entity in skill_entities}),
+            skill_entities=skill_entities,
             source_payload=item,
             date_posted=_parse_date(item.get("created")) or _parse_date(metadata.get("date_posted")),
         )

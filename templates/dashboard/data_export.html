@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+{% block title %}Data Export - CurriculumMatch{% endblock %}
+{% block page_title %}Data Export{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-outline" href="{{ visual_export_href }}">Export Visual CSV</a>
+  <a class="btn btn-outline" href="{{ skill_export_href }}">Export Skills CSV</a>
+  <a class="btn btn-outline" href="{% url 'job-skill-export' %}">Export Jobs CSV</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.data-summary { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.data-stat { background:#fff; border:1px solid var(--rule); border-radius:8px; padding:14px; }
+.data-stat-value { font-size:26px; font-weight:800; line-height:1; }
+.source-tiles { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.source-tile {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-height:98px;
+  padding:18px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  color:var(--ink);
+  text-decoration:none;
+  box-shadow:0 12px 30px rgba(11,11,11,.04);
+}
+.source-tile:hover { border-color:var(--uj-orange); transform:translateY(-1px); }
+.source-tile.active { background:#111; color:#fff; border-color:#111; }
+.source-tile-label { font-weight:800; font-size:15px; }
+.source-tile-sub { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
+.source-tile.active .source-tile-sub { color:rgba(255,255,255,.68); }
+.source-tile-count { font-size:30px; font-weight:800; line-height:1; }
+.data-filters { display:grid; grid-template-columns:repeat(5,minmax(150px,1fr)) auto; gap:10px; margin-bottom:16px; }
+.skill-plot-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr); gap:12px; margin-bottom:16px; }
+.skill-plot { min-height:320px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
+.analysis-toolbar { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:12px; }
+.analysis-toolbar h2 { margin:0; }
+.forecast-status { font-family:var(--mono); font-size:11px; color:var(--muted); }
+.cluster-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.cluster-help { color:var(--muted); font-size:12px; margin-top:4px; }
+.vector-loading-btn.is-loading { pointer-events:none; opacity:.78; }
+.vector-loading-btn.is-loading::before {
+  content:"";
+  display:inline-block;
+  width:12px;
+  height:12px;
+  margin-right:7px;
+  border:2px solid rgba(255,255,255,.58);
+  border-top-color:#fff;
+  border-radius:50%;
+  vertical-align:-2px;
+  animation:vectorSpin .75s linear infinite;
+}
+@keyframes vectorSpin { to { transform:rotate(360deg); } }
+.entity-table td { vertical-align:top; }
+.entity-edit { display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(90px,.7fr) minmax(90px,.7fr) minmax(100px,.8fr) auto; gap:6px; align-items:center; min-width:620px; }
+.entity-edit .form-control { padding:7px 8px; font-size:12px; }
+.entity-id { font-family:var(--mono); font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
+.entity-source { max-width:260px; }
+.entity-source strong { display:block; color:var(--ink); font-size:12px; }
+@media (max-width:980px) {
+  .data-summary, .source-tiles, .data-filters, .skill-plot-grid { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="data-summary">
+  <div class="data-stat">
+    <div class="card-label">Skill records</div>
+    <div class="data-stat-value">{{ total_rows }}</div>
+  </div>
+  <div class="data-stat">
+    <div class="card-label">Job skills</div>
+    <div class="data-stat-value">{{ all_source_counts.job|default:0 }}</div>
+  </div>
+  <div class="data-stat">
+    <div class="card-label">Course skills</div>
+    <div class="data-stat-value">{{ all_source_counts.module|default:0 }}</div>
+  </div>
+  <div class="data-stat">
+    <div class="card-label">Displayed</div>
+    <div class="data-stat-value">{{ rows|length }}</div>
+  </div>
+</div>
+
+<div class="source-tiles" aria-label="Skill source views">
+  {% for tile in source_tiles %}
+  <a class="source-tile {% if tile.active %}active{% endif %}" href="{{ tile.href }}">
+    <span>
+      <span class="source-tile-label">{{ tile.label }}</span>
+      <span class="source-tile-sub">
+        {% if tile.key == "job" %}
+          NER skill evidence extracted from job adverts
+        {% elif tile.key == "module" %}
+          NER skill evidence extracted from course modules
+        {% else %}
+          Combined job and course NER skill evidence
+        {% endif %}
+      </span>
+    </span>
+    <span class="source-tile-count">{{ tile.count }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+<div class="card mb-6">
+  <form class="data-filters" method="get">
+    <select class="form-control" name="source" aria-label="Source">
+      <option value="">All sources</option>
+      <option value="job" {% if current_source == "job" %}selected{% endif %}>Jobs</option>
+      <option value="module" {% if current_source == "module" %}selected{% endif %}>Course modules</option>
+    </select>
+    <select class="form-control" name="skill_type" aria-label="Skill type">
+      <option value="">All skill types</option>
+      {% for skill_type in skill_types %}
+      <option value="{{ skill_type }}" {% if current_skill_type == skill_type %}selected{% endif %}>{{ skill_type }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-control" name="sector" aria-label="Sector">
+      <option value="">All sectors</option>
+      {% for sector in sectors %}
+      <option value="{{ sector }}" {% if current_sector == sector %}selected{% endif %}>{{ sector }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-control" name="job_title" aria-label="Job title">
+      <option value="">All job titles</option>
+      {% for title in job_titles %}
+      <option value="{{ title }}" {% if current_job_title == title %}selected{% endif %}>{{ title }}</option>
+      {% endfor %}
+    </select>
+    <input class="form-control" name="q" value="{{ current_q }}" placeholder="Search skill, evidence id, entity id, or source">
+    <button class="btn btn-primary" type="submit">Filter</button>
+  </form>
+  <div class="text-muted text-sm">Rows are deduped by source document and entity ID. Inline edits mark a chunk as reviewed and update the stored job/module skill JSON.</div>
+</div>
+
+<div class="skill-plot-grid">
+  <div>
+    <div class="analysis-toolbar">
+      <h2>Top Skill Evidence</h2>
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain top skill evidence chart"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Top skills</span>
+          <span class="graph-insight-body">This ranks the most frequent extracted skills in the current filter. High bars are repeated evidence, not hardcoded labels.</span>
+        </span>
+      </span>
+    </div>
+    <div class="skill-plot" id="topSkillsPlot"></div>
+  </div>
+  <div>
+    <div class="analysis-toolbar">
+      <h2>Skill Type and Source</h2>
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain skill type and source chart"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Type/source split</span>
+          <span class="graph-insight-body">The donut shows the mix of technical, soft, business, and domain skills. The bar underneath shows whether the evidence came from jobs or course modules.</span>
+        </span>
+      </span>
+    </div>
+    <div class="skill-plot" id="skillTypePlot"></div>
+  </div>
+</div>
+<div class="card mb-6">
+  <div class="section-hd">
+    <h2>Skill Heatmap</h2>
+    <div class="flex gap-2">
+      <span class="badge badge-gray">Type by source</span>
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain skill heatmap"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Heatmap reading</span>
+          <span class="graph-insight-body">Rows are skill types and columns are evidence sources. Darker cells mean more extracted records in that source/type combination.</span>
+        </span>
+      </span>
+    </div>
+  </div>
+  <div class="skill-plot" id="skillHeatmapPlot"></div>
+</div>
+<div class="card mb-6">
+  <div class="section-hd">
+    <h2>Skill Evidence Network</h2>
+    <div class="flex gap-2">
+      <span class="badge badge-gray">Filtered NER rows</span>
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain skill evidence network"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Network reading</span>
+          <span class="graph-insight-body">Skill nodes connect to their detected type and source. This helps check whether evidence is coming mostly from jobs, courses, or one skill category.</span>
+        </span>
+      </span>
+    </div>
+  </div>
+  <div class="skill-plot" id="skillNetworkPlot"></div>
+</div>
+<div class="card mb-6">
+  <div class="analysis-toolbar">
+    <div>
+      <h2>Skill Demand Forecast</h2>
+      <div class="forecast-status" id="forecastStatus">Ready</div>
+    </div>
+    <div class="cluster-actions">
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain skill demand forecast"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Forecast reading</span>
+          <span class="graph-insight-body">The solid line is observed yearly skill evidence. The dotted segment is a simple one-year projection from the current trend, useful for exploration rather than certainty.</span>
+        </span>
+      </span>
+      <button class="btn btn-primary" type="button" id="forecastBtn">Run Time Series Forecast</button>
+    </div>
+  </div>
+  <div class="skill-plot" id="skillForecastPlot"></div>
+</div>
+<div class="card mb-6">
+  <div class="section-hd">
+    <div>
+      <h2>Semantic Skill Clusters</h2>
+      <div class="cluster-help" id="clusterHelp">Scroll or drag to zoom and pan. Click a skill to focus its neighbourhood.</div>
+    </div>
+    <div class="cluster-actions">
+      <span class="badge badge-gray">Zoomable association view</span>
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain semantic skill clusters"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Cluster reading</span>
+          <span class="graph-insight-body">Nearby or connected skills share terms, sector context, skill type, or repeated co-occurrence. Click a skill to highlight its neighbourhood.</span>
+        </span>
+      </span>
+      <a class="btn btn-primary btn-sm vector-loading-btn" href="{{ skill_vector_href }}" id="fullVectorViewBtn" aria-live="polite">Full vector view</a>
+      <button class="btn btn-outline btn-sm" type="button" id="clusterResetBtn">Reset view</button>
+    </div>
+  </div>
+  <div class="skill-plot" id="skillClusterPlot"></div>
+</div>
+
+<div class="table-wrap">
+  <table class="entity-table">
+    <thead>
+      <tr>
+        <th>Evidence ID</th>
+        <th>Source</th>
+        <th>NER Evidence</th>
+        <th>Context</th>
+        <th>Review Label</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td>
+          <div class="entity-id">{{ row.id }}</div>
+          <div class="mt-2"><span class="badge badge-gray">{{ row.label_status }}</span></div>
+        </td>
+        <td class="entity-source">
+          <strong>{{ row.source_type|title }} {{ row.source_id }}</strong>
+          {% if row.parent_label %}<span class="text-muted text-sm">{{ row.parent_label }}</span><br>{% endif %}
+          <span>{{ row.source_label }}</span>
+        </td>
+        <td>
+          <div><strong>{{ row.skill }}</strong></div>
+          <div class="text-muted text-sm">{{ row.text }}</div>
+          <div class="chip-list mt-2">
+            <span class="chip">{{ row.source }}</span>
+            <span class="chip">{{ row.tier }}</span>
+            <span class="chip">{{ row.skill_type }}</span>
+            {% if row.confidence %}<span class="chip">{{ row.confidence }}</span>{% endif %}
+          </div>
+          <div class="entity-id mt-2">{{ row.pattern }}{% if row.pos_signature %} / {{ row.pos_signature }}{% endif %}</div>
+        </td>
+        <td>
+          <div><strong>{{ row.sector }}</strong></div>
+          {% if row.job_title %}<div class="text-muted text-sm">{{ row.job_title }}</div>{% endif %}
+          {% if row.extracted_year %}<div class="entity-id mt-2">{{ row.extracted_year }}</div>{% endif %}
+        </td>
+        <td>
+          <form class="entity-edit" method="post" action="{% url 'skill-entity-update' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <input type="hidden" name="source_type" value="{{ row.source_type }}">
+            <input type="hidden" name="source_id" value="{{ row.source_id }}">
+            <input type="hidden" name="entity_id" value="{{ row.id }}">
+            <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
+            <input class="form-control" name="skill" value="{{ row.skill }}" aria-label="Skill">
+            <input class="form-control" name="label" value="{{ row.label }}" aria-label="NER label">
+            <select class="form-control" name="tier" aria-label="Tier">
+              <option value="explicit" {% if row.tier == "explicit" %}selected{% endif %}>explicit</option>
+              <option value="candidate" {% if row.tier == "candidate" %}selected{% endif %}>candidate</option>
+              <option value="reviewed" {% if row.tier == "reviewed" %}selected{% endif %}>reviewed</option>
+              <option value="exclude" {% if row.tier == "exclude" %}selected{% endif %}>exclude</option>
+            </select>
+            <select class="form-control" name="skill_type" aria-label="Skill type">
+              <option value="technical" {% if row.skill_type == "technical" %}selected{% endif %}>technical</option>
+              <option value="soft" {% if row.skill_type == "soft" %}selected{% endif %}>soft</option>
+              <option value="domain" {% if row.skill_type == "domain" %}selected{% endif %}>domain</option>
+              <option value="business" {% if row.skill_type == "business" %}selected{% endif %}>business</option>
+              <option value="exclude" {% if row.skill_type == "exclude" %}selected{% endif %}>exclude</option>
+            </select>
+            <button class="btn btn-outline btn-sm" type="submit">Save</button>
+          </form>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-text">No skill evidence matches the current filter.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ rows|json_script:"skillRowsData" }}
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<script>
+const skillRows = JSON.parse(document.getElementById('skillRowsData')?.textContent || '[]');
+const plotConfig = { responsive:true, displayModeBar:false };
+const clusterPlotConfig = {
+  responsive:true,
+  scrollZoom:true,
+  displayModeBar:true,
+  displaylogo:false,
+  modeBarButtonsToRemove:['select2d', 'lasso2d'],
+};
+const plotLayoutBase = {
+  paper_bgcolor:'#ffffff',
+  plot_bgcolor:'#ffffff',
+  margin:{ l:48, r:22, t:42, b:54 },
+  font:{ family:'Inter, Arial', size:12, color:'#101010' },
+};
+let clusterResetHandlerAttached = false;
+
+function countBy(rows, key) {
+  return rows.reduce((acc, row) => {
+    const value = row[key] || 'unknown';
+    acc[value] = (acc[value] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function topCounts(rows, key, limit = 15) {
+  return Object.entries(countBy(rows, key))
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit);
+}
+
+function pairCounts(rows, leftKey, rightKey) {
+  return rows.reduce((acc, row) => {
+    const left = row[leftKey] || 'unknown';
+    const right = row[rightKey] || 'unknown';
+    const key = `${left}|${right}`;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function renderTopSkills() {
+  const pairs = topCounts(skillRows, 'skill', 15).reverse();
+  Plotly.newPlot('topSkillsPlot', [{
+    type:'bar',
+    orientation:'h',
+    x:pairs.map(pair => pair[1]),
+    y:pairs.map(pair => pair[0]),
+    marker:{ color:'#f58220' },
+    hovertemplate:'%{y}<br>Records: %{x}<extra></extra>',
+  }], {
+    ...plotLayoutBase,
+    title:{ text:'Top Skill Evidence', font:{ size:15 } },
+    xaxis:{ title:'Records', gridcolor:'#f2eee8' },
+    yaxis:{ automargin:true },
+  }, plotConfig);
+}
+
+function renderSkillType() {
+  const typePairs = topCounts(skillRows, 'skill_type', 10);
+  const sourcePairs = topCounts(skillRows, 'source_type', 10);
+  Plotly.newPlot('skillTypePlot', [{
+    type:'pie',
+    labels:typePairs.map(pair => pair[0]),
+    values:typePairs.map(pair => pair[1]),
+    hole:.48,
+    marker:{ colors:['#111111', '#f58220', '#2f80ed', '#6f6a60', '#9e2f18'] },
+    domain:{ x:[0,1], y:[.36,1] },
+    hovertemplate:'%{label}<br>Records: %{value}<extra></extra>',
+  }, {
+    type:'bar',
+    x:sourcePairs.map(pair => pair[0]),
+    y:sourcePairs.map(pair => pair[1]),
+    marker:{ color:'#2f80ed' },
+    xaxis:'x2',
+    yaxis:'y2',
+    hovertemplate:'%{x}<br>Records: %{y}<extra></extra>',
+  }], {
+    ...plotLayoutBase,
+    title:{ text:'Skill Type and Source', font:{ size:15 } },
+    showlegend:false,
+    margin:{ l:42, r:22, t:42, b:42 },
+    xaxis2:{ domain:[0,1], anchor:'y2' },
+    yaxis2:{ domain:[0,.25], anchor:'x2', gridcolor:'#f2eee8' },
+  }, plotConfig);
+}
+
+function renderSkillHeatmap() {
+  const sources = [...new Set(skillRows.map(row => row.source_type || 'unknown'))].sort();
+  const types = [...new Set(skillRows.map(row => row.skill_type || 'unknown'))].sort();
+  const counts = pairCounts(skillRows, 'source_type', 'skill_type');
+  const z = types.map(type => sources.map(source => counts[`${source}|${type}`] || 0));
+  Plotly.newPlot('skillHeatmapPlot', [{
+    type:'heatmap',
+    x:sources,
+    y:types,
+    z,
+    colorscale:[
+      [0, '#fff7ed'],
+      [.35, '#fdba74'],
+      [.7, '#f58220'],
+      [1, '#111111'],
+    ],
+    hovertemplate:'Source: %{x}<br>Type: %{y}<br>Records: %{z}<extra></extra>',
+  }], {
+    ...plotLayoutBase,
+    title:{ text:'NER Skill Evidence Density', font:{ size:15 } },
+    xaxis:{ title:'Source', side:'bottom' },
+    yaxis:{ title:'Skill type', automargin:true },
+    margin:{ l:100, r:28, t:44, b:64 },
+  }, plotConfig);
+}
+
+function renderSkillNetwork() {
+  const topSkills = new Set(topCounts(skillRows, 'skill', 18).map(pair => pair[0]));
+  const rows = skillRows.filter(row => topSkills.has(row.skill)).slice(0, 140);
+  const skills = [...new Set(rows.map(row => row.skill))];
+  const types = [...new Set(rows.map(row => row.skill_type || 'unknown'))];
+  const sources = [...new Set(rows.map(row => row.source_type || 'unknown'))];
+  const nodes = [
+    ...skills.map((label, index) => ({ id:`skill:${label}`, label, kind:'skill', x:index, y:2 })),
+    ...types.map((label, index) => ({ id:`type:${label}`, label, kind:'type', x:index * 2, y:1 })),
+    ...sources.map((label, index) => ({ id:`source:${label}`, label, kind:'source', x:index * 3, y:0 })),
+  ];
+  const nodeIndex = new Map(nodes.map((node, index) => [node.id, index]));
+  const edges = [];
+  rows.forEach(row => {
+    edges.push([`skill:${row.skill}`, `type:${row.skill_type || 'unknown'}`]);
+    edges.push([`skill:${row.skill}`, `source:${row.source_type || 'unknown'}`]);
+  });
+  const edgeCounts = edges.reduce((acc, edge) => {
+    const key = edge.join('|');
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const edgeX = [];
+  const edgeY = [];
+  Object.keys(edgeCounts).forEach(key => {
+    const [from, to] = key.split('|');
+    const a = nodes[nodeIndex.get(from)];
+    const b = nodes[nodeIndex.get(to)];
+    if (!a || !b) return;
+    edgeX.push(a.x, b.x, null);
+    edgeY.push(a.y, b.y, null);
+  });
+  const colorByKind = { skill:'#f58220', type:'#111111', source:'#2f80ed' };
+  Plotly.newPlot('skillNetworkPlot', [{
+    type:'scatter',
+    mode:'lines',
+    x:edgeX,
+    y:edgeY,
+    line:{ color:'rgba(112,105,96,.24)', width:1 },
+    hoverinfo:'skip',
+  }, {
+    type:'scatter',
+    mode:'markers+text',
+    x:nodes.map(node => node.x),
+    y:nodes.map(node => node.y),
+    text:nodes.map(node => node.label),
+    textposition:'top center',
+    marker:{
+      size:nodes.map(node => node.kind === 'skill' ? 14 : 18),
+      color:nodes.map(node => colorByKind[node.kind]),
+      line:{ color:'#ffffff', width:1 },
+    },
+    customdata:nodes.map(node => node.kind),
+    hovertemplate:'%{text}<br>%{customdata}<extra></extra>',
+  }], {
+    ...plotLayoutBase,
+    title:{ text:'Skills Linked to Type and Source', font:{ size:15 } },
+    xaxis:{ visible:false },
+    yaxis:{ visible:false, range:[-.35,2.45] },
+    margin:{ l:24, r:24, t:42, b:20 },
+  }, plotConfig);
+}
+
+function yearForRow(row) {
+  if (row.extracted_year) return Number(row.extracted_year);
+  const parsed = row.extracted_date ? new Date(row.extracted_date) : null;
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getFullYear() : null;
+}
+
+function renderSkillForecast() {
+  const status = document.getElementById('forecastStatus');
+  const datedRows = skillRows.filter(row => yearForRow(row));
+  if (!datedRows.length) {
+    status.textContent = 'No dated rows';
+    Plotly.newPlot('skillForecastPlot', [], {
+      ...plotLayoutBase,
+      title:{ text:'No dated skill evidence available', font:{ size:15 } },
+      xaxis:{ visible:false },
+      yaxis:{ visible:false },
+    }, plotConfig);
+    return;
+  }
+
+  const topSkills = topCounts(datedRows, 'skill', 6).map(pair => pair[0]);
+  const yearSet = new Set(datedRows.map(row => yearForRow(row)));
+  const years = [...yearSet].sort((a, b) => a - b);
+  const nextYear = Math.max(...years) + 1;
+  const traces = topSkills.flatMap((skill, index) => {
+    const counts = years.map(year => datedRows.filter(row => row.skill === skill && yearForRow(row) === year).length);
+    const slope = counts.length > 1 ? (counts[counts.length - 1] - counts[0]) / (counts.length - 1) : Math.max(1, counts[0] * 0.15);
+    const forecast = Math.max(0, Math.round(counts[counts.length - 1] + slope));
+    const color = ['#111111', '#f58220', '#2f80ed', '#236b35', '#9e2f18', '#706960'][index % 6];
+    return [{
+      type:'scatter',
+      mode:'lines+markers',
+      name:skill,
+      x:years,
+      y:counts,
+      line:{ color, width:3 },
+      marker:{ size:7 },
+      hovertemplate:`${skill}<br>Year: %{x}<br>Records: %{y}<extra></extra>`,
+    }, {
+      type:'scatter',
+      mode:'lines+markers',
+      name:`${skill} forecast`,
+      x:[years[years.length - 1], nextYear],
+      y:[counts[counts.length - 1], forecast],
+      line:{ color, width:2, dash:'dot' },
+      marker:{ size:8, symbol:'diamond' },
+      showlegend:false,
+      hovertemplate:`${skill}<br>Forecast year: %{x}<br>Projected records: %{y}<extra></extra>`,
+    }];
+  });
+
+  status.textContent = `Forecast to ${nextYear}`;
+  Plotly.newPlot('skillForecastPlot', traces, {
+    ...plotLayoutBase,
+    title:{ text:'Skill Evidence Trend and One-Year Forecast', font:{ size:15 } },
+    xaxis:{ title:'Extraction year', dtick:1, gridcolor:'#f2eee8' },
+    yaxis:{ title:'Skill records', rangemode:'tozero', gridcolor:'#f2eee8' },
+    legend:{ orientation:'h', y:-.22 },
+    margin:{ l:58, r:24, t:46, b:92 },
+  }, plotConfig);
+}
+
+function skillTokens(value) {
+  const stop = new Set(['and', 'the', 'for', 'with', 'of', 'in', 'to', 'a', 'an']);
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9+# ]+/g, ' ')
+    .split(/\s+/)
+    .filter(token => token && !stop.has(token));
+}
+
+function jaccard(left, right) {
+  const a = new Set(left);
+  const b = new Set(right);
+  const intersection = [...a].filter(value => b.has(value)).length;
+  const union = new Set([...a, ...b]).size || 1;
+  return intersection / union;
+}
+
+function renderSkillClusters() {
+  const clusterPlot = document.getElementById('skillClusterPlot');
+  const clusterHelp = document.getElementById('clusterHelp');
+  const pairs = topCounts(skillRows, 'skill', 36);
+  if (!pairs.length) return;
+
+  const bySkill = new Map(pairs.map(([skill, count]) => [skill, {
+    skill,
+    count,
+    rows: skillRows.filter(row => row.skill === skill),
+    tokens: skillTokens(skill),
+  }]));
+  const nodes = [...bySkill.values()];
+  nodes.forEach(node => {
+    const typeCounts = countBy(node.rows, 'skill_type');
+    const sectorCounts = countBy(node.rows, 'sector');
+    node.skill_type = Object.entries(typeCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'domain';
+    node.sector = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Unclassified';
+  });
+
+  const edges = [];
+  for (let i = 0; i < nodes.length; i += 1) {
+    for (let j = i + 1; j < nodes.length; j += 1) {
+      const tokenScore = jaccard(nodes[i].tokens, nodes[j].tokens);
+      const typeScore = nodes[i].skill_type === nodes[j].skill_type ? .18 : 0;
+      const sectorScore = nodes[i].sector === nodes[j].sector ? .12 : 0;
+      const score = tokenScore + typeScore + sectorScore;
+      if (score >= .28) edges.push({ from:i, to:j, score });
+    }
+  }
+
+  const groups = [...new Set(nodes.map(node => node.skill_type || 'domain'))].sort();
+  const colorByGroup = { technical:'#2f80ed', business:'#f58220', soft:'#236b35', domain:'#111111', exclude:'#9e2f18' };
+  const groupedIndex = Object.fromEntries(groups.map(group => [group, 0]));
+  nodes.forEach((node, index) => {
+    const groupIndex = groups.indexOf(node.skill_type);
+    const itemIndex = groupedIndex[node.skill_type]++;
+    const radius = 1 + (itemIndex % 6) * .18;
+    const angle = ((Math.PI * 2) * groupIndex / Math.max(1, groups.length)) + itemIndex * .52;
+    node.x = Math.cos(angle) * radius;
+    node.y = Math.sin(angle) * radius;
+    node.index = index;
+  });
+
+  const edgeX = [];
+  const edgeY = [];
+  const edgePairs = [];
+  edges.forEach(edge => {
+    edgeX.push(nodes[edge.from].x, nodes[edge.to].x, null);
+    edgeY.push(nodes[edge.from].y, nodes[edge.to].y, null);
+    edgePairs.push([edge.from, edge.to]);
+  });
+
+  const xValues = nodes.map(node => node.x);
+  const yValues = nodes.map(node => node.y);
+  const padding = .55;
+  const fullRange = {
+    x:[Math.min(...xValues) - padding, Math.max(...xValues) + padding],
+    y:[Math.min(...yValues) - padding, Math.max(...yValues) + padding],
+  };
+  const clusterLayout = {
+    ...plotLayoutBase,
+    title:{ text:'Semantic Association Clusters', font:{ size:15 } },
+    dragmode:'pan',
+    hovermode:'closest',
+    xaxis:{ visible:false, range:fullRange.x, fixedrange:false },
+    yaxis:{ visible:false, range:fullRange.y, fixedrange:false, scaleanchor:'x', scaleratio:1 },
+    margin:{ l:24, r:24, t:44, b:24 },
+    showlegend:false,
+  };
+
+  const baseMarkerColors = nodes.map(node => colorByGroup[node.skill_type] || '#706960');
+  const baseMarkerSizes = nodes.map(node => Math.min(34, 10 + node.count * 2));
+  const resetClusterView = () => {
+    Plotly.restyle(clusterPlot, {
+      x:[[]],
+      y:[[]],
+    }, [1]);
+    Plotly.restyle(clusterPlot, {
+      'marker.color':[baseMarkerColors],
+      'marker.size':[baseMarkerSizes],
+      'marker.opacity':[nodes.map(() => .92)],
+      'marker.line.color':[nodes.map(() => '#ffffff')],
+      'marker.line.width':[nodes.map(() => 1)],
+    }, [1]);
+    Plotly.relayout(clusterPlot, {
+      'xaxis.range':fullRange.x,
+      'yaxis.range':fullRange.y,
+    });
+    if (clusterHelp) clusterHelp.textContent = 'Scroll or drag to zoom and pan. Click a skill to focus its neighbourhood.';
+  };
+
+  Plotly.newPlot(clusterPlot, [{
+    type:'scatter',
+    mode:'lines',
+    x:edgeX,
+    y:edgeY,
+    line:{ color:'rgba(112,105,96,.24)', width:1.2 },
+    hoverinfo:'skip',
+  }, {
+    type:'scatter',
+    mode:'lines',
+    x:[],
+    y:[],
+    line:{ color:'#111111', width:3.2 },
+    hoverinfo:'skip',
+  }, {
+    type:'scatter',
+    mode:'markers+text',
+    x:nodes.map(node => node.x),
+    y:nodes.map(node => node.y),
+    text:nodes.map(node => node.skill),
+    textposition:'top center',
+    marker:{
+      size:baseMarkerSizes,
+      color:baseMarkerColors,
+      opacity:nodes.map(() => .92),
+      line:{ color:nodes.map(() => '#ffffff'), width:nodes.map(() => 1) },
+    },
+    customdata:nodes.map(node => [node.skill_type, node.sector, node.count, node.x, node.y, node.skill, node.index]),
+    hovertemplate:'%{text}<br>Type: %{customdata[0]}<br>Sector: %{customdata[1]}<br>Records: %{customdata[2]}<br>Click to zoom in<extra></extra>',
+  }], clusterLayout, clusterPlotConfig).then(plot => {
+    plot.removeAllListeners?.('plotly_click');
+    plot.on('plotly_click', event => {
+      const point = event.points?.find(item => item.curveNumber === 2);
+      if (!point) return;
+      const [, , , x, y, skill, selectedIndex] = point.customdata;
+      const neighbours = new Set([selectedIndex]);
+      edgePairs.forEach(([from, to]) => {
+        if (from === selectedIndex) neighbours.add(to);
+        if (to === selectedIndex) neighbours.add(from);
+      });
+      const activeColors = nodes.map((node, index) => {
+        if (index === selectedIndex) return '#111111';
+        if (neighbours.has(index)) return '#f58220';
+        return '#d8d2c8';
+      });
+      const activeSizes = nodes.map((node, index) => {
+        if (index === selectedIndex) return Math.max(baseMarkerSizes[index] + 10, 28);
+        if (neighbours.has(index)) return baseMarkerSizes[index] + 5;
+        return Math.max(8, baseMarkerSizes[index] - 4);
+      });
+      const activeOpacity = nodes.map((node, index) => neighbours.has(index) ? 1 : .26);
+      const activeEdgeX = [];
+      const activeEdgeY = [];
+      edgePairs.forEach(([from, to]) => {
+        const linked = from === selectedIndex || to === selectedIndex;
+        if (linked) {
+          activeEdgeX.push(nodes[from].x, nodes[to].x, null);
+          activeEdgeY.push(nodes[from].y, nodes[to].y, null);
+        }
+      });
+      Plotly.restyle(plot, {
+        x:[activeEdgeX],
+        y:[activeEdgeY],
+      }, [1]);
+      Plotly.restyle(plot, {
+        'marker.color':[activeColors],
+        'marker.size':[activeSizes],
+        'marker.opacity':[activeOpacity],
+        'marker.line.color':[nodes.map((node, index) => index === selectedIndex ? '#f58220' : neighbours.has(index) ? '#111111' : '#ffffff')],
+        'marker.line.width':[nodes.map((node, index) => index === selectedIndex ? 4 : neighbours.has(index) ? 2 : 1)],
+      }, [2]);
+      const span = .7;
+      Plotly.relayout(plot, {
+        'xaxis.range':[x - span, x + span],
+        'yaxis.range':[y - span, y + span],
+      });
+      if (clusterHelp) clusterHelp.textContent = `${skill} is active. Connected skills are highlighted; unrelated skills are faded.`;
+    });
+  });
+
+  if (!clusterResetHandlerAttached) {
+    document.getElementById('clusterResetBtn')?.addEventListener('click', () => {
+      if (typeof window.resetSkillClusterView === 'function') window.resetSkillClusterView();
+    });
+    clusterResetHandlerAttached = true;
+  }
+  window.resetSkillClusterView = resetClusterView;
+}
+
+document.getElementById('forecastBtn')?.addEventListener('click', renderSkillForecast);
+document.getElementById('fullVectorViewBtn')?.addEventListener('click', event => {
+  const button = event.currentTarget;
+  if (button.classList.contains('is-loading')) return;
+  button.classList.add('is-loading');
+  button.setAttribute('aria-busy', 'true');
+  button.textContent = 'Loading vector view...';
+});
+
+if (skillRows.length && window.Plotly) {
+  renderTopSkills();
+  renderSkillType();
+  renderSkillHeatmap();
+  renderSkillNetwork();
+  renderSkillClusters();
+}
+</script>
+{% endblock %}

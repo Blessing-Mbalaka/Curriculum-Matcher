@@ -9,8 +9,12 @@ from dashboard.views import (
     DashboardView, JobUploadView, JobListView, JobDeleteView,
     RunAnalysisView, AnalysisResultsView,
     StartContinuousJobsView, StartJobsOnlyView, StopTaskView, TaskListView,
-    TechnicalReportExportView,
+    TechnicalReportExportView, DataExportView, SkillEntityUpdateView,
+    SkillEntityCsvExportView, JobCsvExportView, DataExportVisualCsvExportView,
+    SkillVectorSpaceView, SkillVectorSpaceCsvExportView,
+    DashboardVisualCsvExportView, AnalysisVisualCsvExportView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
+    skill_vector_space,
 )
 from course_scraper.views import CourseScraperView, StartCourseScrapeView, scrape_status_api
 from methodology.views import MethodologyView
@@ -47,6 +51,15 @@ urlpatterns = [
     path("tasks/<int:pk>/stop/", StopTaskView.as_view(), name="stop-task"),
     path("analysis/results/", AnalysisResultsView.as_view(), name="analysis-results"),
     path("reports/technical/", TechnicalReportExportView.as_view(), name="technical-report-export"),
+    path("dashboard/visuals.csv", DashboardVisualCsvExportView.as_view(), name="dashboard-visual-export"),
+    path("data-export/", DataExportView.as_view(), name="data-export"),
+    path("data-export/vector-space/", SkillVectorSpaceView.as_view(), name="skill-vector-space"),
+    path("data-export/skills.csv", SkillEntityCsvExportView.as_view(), name="skill-entity-export"),
+    path("data-export/jobs.csv", JobCsvExportView.as_view(), name="job-skill-export"),
+    path("data-export/visuals.csv", DataExportVisualCsvExportView.as_view(), name="data-export-visual-export"),
+    path("data-export/vector-space.csv", SkillVectorSpaceCsvExportView.as_view(), name="skill-vector-space-export"),
+    path("analysis/results/visuals.csv", AnalysisVisualCsvExportView.as_view(), name="analysis-visual-export"),
+    path("data-export/entity/update/", SkillEntityUpdateView.as_view(), name="skill-entity-update"),
     path("methodology/", MethodologyView.as_view(), name="methodology"),
 
     # Tasks
@@ -55,5 +68,6 @@ urlpatterns = [
     path("api/results/", results_json, name="results-json"),
     path("api/dashboard/metrics/", dashboard_metrics, name="dashboard-metrics"),
     path("api/dashboard/network/", similarity_network, name="similarity-network"),
+    path("api/data-export/vector-space/", skill_vector_space, name="skill-vector-space-api"),
     path("api/course-scraper/status/", scrape_status_api, name="course-scraper-status"),
 ]

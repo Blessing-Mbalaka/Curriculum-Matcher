@@ -16,6 +16,15 @@ class Course(models.Model):
     def __str__(self):
         return f"{self.code} — {self.name}"
 
+    @property
+    def skills_extracted(self):
+        skills = {
+            skill
+            for module in self.modules.all()
+            for skill in (module.skills_extracted or [])
+        }
+        return sorted(skills)
+
 
 class Module(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name="modules")
@@ -24,6 +33,7 @@ class Module(models.Model):
     country = models.CharField(max_length=120, blank=True)
     content = models.TextField(help_text="Paste the full syllabus / content for this module")
     skills_extracted = models.JSONField(default=list, blank=True)
+    skill_entities = models.JSONField(default=list, blank=True)
     vector = models.JSONField(default=list, blank=True)
     order = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)

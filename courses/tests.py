@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
@@ -7,6 +9,31 @@ from .models import Course, Module
 
 
 class ModuleFileUploadTests(TestCase):
+    @patch("analysis.spacyskillextraction.SpacySkillExtractor")
+    def test_module_create_extracts_skills_with_ner_helper(self, extractor_cls):
+        extractor_cls.return_value.extract_entities.return_value = [
+            {"skill": "data analysis", "id": "skill-data-analysis"}
+        ]
+        course = Course.objects.create(code="MBA201", name="MBA")
+
+        response = self.client.post(
+            reverse("module-create", args=[course.pk]),
+            {
+                "name": "Analytics",
+                "content": "Use data analysis to support decisions.",
+                "order": "1",
+            },
+        )
+
+        self.assertRedirects(response, reverse("course-detail", args=[course.pk]))
+        module = Module.objects.get(course=course)
+        self.assertEqual(module.skills_extracted, ["data analysis"])
+        self.assertEqual(module.skill_entities, [{"skill": "data analysis", "id": "skill-data-analysis"}])
+        extractor_cls.return_value.extract_entities.assert_called_once_with(
+            "Use data analysis to support decisions.",
+            document_id=f"module-{module.pk}",
+        )
+
     def test_text_file_upload_is_parsed_into_module_content(self):
         course = Course.objects.create(code="MBA101", name="MBA")
         uploaded_file = SimpleUploadedFile(
@@ -43,6 +70,27 @@ class ModuleFileUploadTests(TestCase):
 
 
 class CourseFilterTests(TestCase):
+    @patch("analysis.spacyskillextraction.SpacySkillExtractor")
+    def test_course_list_backfills_and_displays_module_skills(self, extractor_cls):
+        extractor_cls.return_value.extract_entities.return_value = [
+            {"skill": "leadership", "id": "skill-leadership"},
+            {"skill": "strategy", "id": "skill-strategy"},
+        ]
+        course = Course.objects.create(code="MBA301", name="MBA")
+        module = Module.objects.create(
+            course=course,
+            name="Strategy",
+            content="Leadership and strategy",
+        )
+
+        response = self.client.get(reverse("course-list"))
+
+        self.assertContains(response, "2 skills")
+        self.assertContains(response, "leadership")
+        self.assertContains(response, "strategy")
+        module.refresh_from_db()
+        self.assertEqual(module.skills_extracted, ["leadership", "strategy"])
+
     def test_course_list_filters_by_module_university_and_country(self):
         matching_course = Course.objects.create(code="MBA101", name="MBA")
         other_course = Course.objects.create(code="CS101", name="Computer Science")

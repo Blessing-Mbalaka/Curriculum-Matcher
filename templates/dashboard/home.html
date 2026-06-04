@@ -2,6 +2,7 @@
 {% block title %}Dashboard - CurriculumMatch{% endblock %}
 {% block page_title %}Executive Dashboard{% endblock %}
 {% block topbar_actions %}
+  <a href="{% url 'dashboard-visual-export' %}" class="btn btn-outline">Download Visual CSV</a>
   <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}
@@ -69,12 +70,14 @@
 .legend-swatch { width:10px; height:10px; border-radius:50%; display:inline-block; border:1px solid #111; }
 .legend-swatch.course { background:#111; border-color:#f58220; }
 .legend-swatch.job { background:#f58220; }
+.legend-swatch.skill { background:#2f80ed; border-color:#123c69; }
 .legend-line { width:26px; height:2px; background:#d68a49; display:inline-block; }
 .network-meta { display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:flex-end; }
 .network-mode { display:inline-flex; border:1px solid var(--rule); border-radius:6px; overflow:hidden; }
 .network-mode button { border:0; border-right:1px solid var(--rule); border-radius:0; padding:6px 10px; background:#fff; color:var(--muted); }
 .network-mode button:last-child { border-right:0; }
 .network-mode button.active { background:#111; color:#fff; }
+.network-meta > .btn.active { background:#111; border-color:#111; color:#fff; }
 .network-filters {
   display:grid;
   grid-template-columns:minmax(180px,1fr) minmax(220px,1.2fr) auto;
@@ -89,21 +92,12 @@
 #similarityNetwork3d,
 #similarityCrosstab { height:clamp(380px, 52vh, 560px); background:linear-gradient(#fff,#fff), radial-gradient(circle at 20px 20px, rgba(16,16,16,.04) 1px, transparent 1px); background-size:auto, 24px 24px; }
 #similarityNetwork3d { display:none; cursor:grab; }
-#similarityCrosstab { display:none; overflow:auto; padding:18px; }
+#similarityCrosstab { display:none; overflow:hidden; padding:0; }
 .network-canvas-wrap.is-3d #similarityNetwork { display:none; }
 .network-canvas-wrap.is-3d #similarityNetwork3d { display:block; }
 .network-canvas-wrap.is-crosstab #similarityNetwork,
 .network-canvas-wrap.is-crosstab #similarityNetwork3d { display:none; }
 .network-canvas-wrap.is-crosstab #similarityCrosstab { display:block; }
-.network-crosstab-table { border-collapse:separate; border-spacing:3px; min-width:760px; width:100%; background:transparent; }
-.network-crosstab-table th,
-.network-crosstab-table td { border:0; background:transparent; padding:0; text-align:center; }
-.network-crosstab-table th { color:var(--muted); font-size:11px; font-family:var(--sans); text-transform:none; letter-spacing:0; }
-.network-crosstab-course { min-width:180px; max-width:240px; text-align:left !important; font-weight:800; color:var(--ink); padding-right:12px !important; }
-.network-crosstab-job { height:112px; min-width:76px; vertical-align:bottom; }
-.network-crosstab-job span { display:inline-block; transform:rotate(-42deg); transform-origin:left bottom; width:120px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.network-crosstab-cell { min-width:72px; height:42px; display:grid; place-items:center; border-radius:4px; border:1px solid rgba(11,11,11,.06); background:rgba(245,130,32, calc(.08 + var(--i) * .72)); font-family:var(--mono); font-size:11px; color:#111; }
-.network-crosstab-cell.empty { background:#f1f3f5; color:#a1a1aa; }
 .network-crosstab-empty { display:grid; place-items:center; height:100%; color:var(--muted); text-align:center; }
 .scene-tooltip {
   color:#111 !important;
@@ -292,6 +286,7 @@
         <div class="network-legend">
           <span class="legend-item"><span class="legend-swatch course"></span>Course</span>
           <span class="legend-item"><span class="legend-swatch job"></span>Job advert</span>
+          <span class="legend-item"><span class="legend-swatch skill"></span>Skill entity</span>
           <span class="legend-item"><span class="legend-line"></span>Similarity link</span>
         </div>
         <div class="network-meta">
@@ -302,6 +297,7 @@
             <button class="btn-sm active" type="button" id="network3dBtn">3D</button>
             <button class="btn-sm" type="button" id="networkCrosstabBtn">Cross-tab</button>
           </span>
+          <button class="btn btn-outline btn-sm" type="button" id="networkClusterBtn" aria-pressed="false">Cluster</button>
           <button class="btn btn-outline btn-sm" type="button" id="fitNetworkBtn">Fit view</button>
         </div>
       </div>
@@ -340,7 +336,7 @@
     <div class="section-hd">
       <h2>Skill Demand vs Curriculum</h2>
       <div class="flex gap-2">
-        <span class="badge badge-gray">Top terms</span>
+          <span class="badge badge-gray">Extracted skills</span>
         <span class="graph-insight">
           <button class="graph-insight-btn" type="button" aria-label="Explain skill demand chart"></button>
           <span class="graph-insight-popover">
@@ -400,6 +396,7 @@
 <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
 <script src="https://unpkg.com/three-spritetext@1.9.0/dist/three-spritetext.min.js"></script>
 <script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 const metricsUrl = "{% url 'dashboard-metrics' %}";
 const networkUrl = "{% url 'similarity-network' %}";
@@ -421,6 +418,7 @@ const clearNetworkFiltersBtn = document.getElementById('clearNetworkFiltersBtn')
 const network2dBtn = document.getElementById('network2dBtn');
 const network3dBtn = document.getElementById('network3dBtn');
 const networkCrosstabBtn = document.getElementById('networkCrosstabBtn');
+const networkClusterBtn = document.getElementById('networkClusterBtn');
 const networkCanvasWrap = document.querySelector('.network-canvas-wrap');
 const network3dContainer = document.getElementById('similarityNetwork3d');
 const networkCrosstab = document.getElementById('similarityCrosstab');
@@ -435,6 +433,7 @@ let networkEdges = null;
 let networkGraph3d = null;
 let currentNetworkGraph = null;
 let networkMode = '3d';
+let networkClusterMode = false;
 let lastNetworkSignature = '';
 
 function csrfToken() {
@@ -473,7 +472,8 @@ function explainSkills(labels, jobValues, courseValues) {
   })).sort((a, b) => b.gap - a.gap);
   const biggest = gaps[0];
   const covered = gaps.filter(item => item.gap <= 0).length;
-  if (biggest.gap >= 5) return `${biggest.label} is the clearest market gap: job demand is ${biggest.job}, while curriculum coverage is ${biggest.course}.`;
+  if (biggest.gap >= 5 && biggest.course === 0) return `${biggest.label} is the clearest market gap: it appears in job evidence but is not detected in the current course skill evidence.`;
+  if (biggest.gap >= 5) return `${biggest.label} is the clearest market gap: job evidence is ${biggest.job}, while course evidence is ${biggest.course}.`;
   if (covered / labels.length >= 0.6) return `Coverage is healthy: ${covered} of ${labels.length} top skills are matched or over-represented in curriculum content.`;
   if (biggest.gap > 0) return `${biggest.label} is the current priority gap, but the difference is still moderate. Watch it as more jobs are fetched.`;
   return 'The top extracted skills are balanced or curriculum-heavy. This suggests coverage is keeping pace with current job demand.';
@@ -483,6 +483,8 @@ function explainNetwork(graph) {
   const nodeCount = graph.nodes.length;
   const edgeCount = graph.edges.length;
   if (!nodeCount || !edgeCount) return 'No network edges yet. The graph appears after analysis creates course-to-job similarity scores.';
+  const skillNodes = graph.nodes.filter(node => node.group === 'skill').length;
+  if (skillNodes) return `Cluster network: ${skillNodes} skill entities are linked to their source job adverts. Hover a job or skill node to inspect extracted skills and entity IDs.`;
   const strongEdges = graph.edges.filter(edge => Number(edge.value || 0) >= 70).length;
   const weakEdges = graph.edges.filter(edge => Number(edge.value || 0) < 40).length;
   if (strongEdges >= Math.max(2, edgeCount * 0.35)) return `Dense strong-match network: ${strongEdges} of ${edgeCount} links are 70%+. Courses are connecting well to the current job set.`;
@@ -498,19 +500,42 @@ function filteredNetworkUrl() {
   const url = new URL(networkUrl, window.location.origin);
   if (networkSchoolFilter?.value) url.searchParams.set('school', networkSchoolFilter.value);
   if (networkJobFilter?.value) url.searchParams.set('job', networkJobFilter.value);
+  if (networkClusterMode) url.searchParams.set('cluster', '1');
   return url.toString();
+}
+
+function networkNodeTypeLabel(node) {
+  if (node.group === 'course') return 'Course';
+  if (node.group === 'skill') return 'Skill';
+  return 'Job';
+}
+
+function networkNodeTooltip(node) {
+  if (node.group === 'skill') {
+    const confidence = node.confidence ? `\nConfidence: ${Math.round(Number(node.confidence) * 100)}%` : '';
+    return `Skill: ${node.skill || node.label}\nEntity ID: ${node.entity_id || node.id}\nSource: ${node.source || 'NER'}${confidence}`;
+  }
+  if (node.group === 'job') {
+    const skills = (node.skills || []).slice(0, 12);
+    return `${networkNodeTypeLabel(node)}: ${node.title || node.label}${skills.length ? `\nSkills: ${skills.join(', ')}` : ''}`;
+  }
+  return `${networkNodeTypeLabel(node)}: ${node.title || node.label}`;
 }
 
 function styleNetworkNode(node) {
   const isCourse = node.group === 'course';
+  const isSkill = node.group === 'skill';
   return {
     ...node,
     shape: 'dot',
-    size: isCourse ? 18 : 15,
+    title: networkNodeTooltip(node),
+    size: isCourse ? 18 : isSkill ? 12 : 15,
     borderWidth: 2,
     color: isCourse
       ? { background:'#111111', border:'#f58220', highlight:{ background:'#242424', border:'#b95400' } }
-      : { background:'#f58220', border:'#111111', highlight:{ background:'#ff9a3d', border:'#111111' } },
+      : isSkill
+        ? { background:'#2f80ed', border:'#123c69', highlight:{ background:'#69a7ff', border:'#123c69' } }
+        : { background:'#f58220', border:'#111111', highlight:{ background:'#ff9a3d', border:'#111111' } },
     font: {
       face:'Inter, Arial',
       size:11,
@@ -557,15 +582,16 @@ function render3DNetwork(graph) {
     networkGraph3d = ForceGraph3D()(network3dContainer)
       .backgroundColor('#ffffff')
       .showNavInfo(false)
-      .nodeLabel(node => `${node.group === 'course' ? 'Course' : 'Job'}: ${node.title || node.label}`)
-      .nodeColor(node => node.group === 'course' ? '#111111' : '#f58220')
-      .nodeVal(node => node.group === 'course' ? 7 : 5)
+      .nodeLabel(node => networkNodeTooltip(node))
+      .nodeColor(node => node.group === 'course' ? '#111111' : node.group === 'skill' ? '#2f80ed' : '#f58220')
+      .nodeVal(node => node.group === 'course' ? 7 : node.group === 'skill' ? 3.6 : 5)
       .linkLabel(link => {
+        if (link.group === 'skill-link') return link.title || 'Job skill entity';
         const score = Math.round(Number(link.value || 0));
         return `Cosine similarity: ${score}%`;
       })
-      .linkWidth(link => Math.max(1, Math.min(5, Number(link.value || 1) / 22)))
-      .linkColor(link => Number(link.value || 0) >= 70 ? '#111111' : '#d47722')
+      .linkWidth(link => link.group === 'skill-link' ? 1.4 : Math.max(1, Math.min(5, Number(link.value || 1) / 22)))
+      .linkColor(link => link.group === 'skill-link' ? '#7db4f5' : Number(link.value || 0) >= 70 ? '#111111' : '#d47722')
       .linkOpacity(.46)
       .linkDirectionalParticles(1)
       .linkDirectionalParticleWidth(link => Number(link.value || 0) >= 70 ? 2 : 1)
@@ -574,22 +600,23 @@ function render3DNetwork(graph) {
         if (window.THREE) {
           const group = new THREE.Group();
           const isCourse = node.group === 'course';
+          const isSkill = node.group === 'skill';
           const sphere = new THREE.Mesh(
-            new THREE.SphereGeometry(isCourse ? 5.5 : 4.8, 24, 24),
-            new THREE.MeshLambertMaterial({ color:isCourse ? '#111111' : '#f58220' })
+            new THREE.SphereGeometry(isCourse ? 5.5 : isSkill ? 3.9 : 4.8, 24, 24),
+            new THREE.MeshLambertMaterial({ color:isCourse ? '#111111' : isSkill ? '#2f80ed' : '#f58220' })
           );
           sphere.userData = { label: node.label };
           group.add(sphere);
 
           const label = new SpriteText(node.label);
           label.color = 'black';
-          label.backgroundColor = isCourse ? 'rgba(255, 241, 228, 0.96)' : 'rgba(255, 255, 255, 0.96)';
-          label.borderColor = isCourse ? '#f58220' : '#111111';
+          label.backgroundColor = isCourse ? 'rgba(255, 241, 228, 0.96)' : isSkill ? 'rgba(236, 245, 255, 0.96)' : 'rgba(255, 255, 255, 0.96)';
+          label.borderColor = isCourse ? '#f58220' : isSkill ? '#2f80ed' : '#111111';
           label.borderWidth = 0.5;
           label.borderRadius = 3;
           label.padding = 3;
-          label.textHeight = 4.2;
-          label.position.y = 11;
+          label.textHeight = isSkill ? 3.6 : 4.2;
+          label.position.y = isSkill ? 8 : 11;
           label.material?.color?.set?.('#111111');
           group.add(label);
           return group;
@@ -615,6 +642,10 @@ function renderNetworkCrosstab(graph) {
     networkCrosstab.innerHTML = '<div class="network-crosstab-empty">No cross-tab data for this filter.</div>';
     return;
   }
+  if (!window.Plotly) {
+    networkCrosstab.innerHTML = '<div class="network-crosstab-empty">Plotly could not load for the cross-tab heatmap.</div>';
+    return;
+  }
   const courses = graph.nodes.filter(node => node.group === 'course');
   const jobs = graph.nodes.filter(node => node.group === 'job');
   const edgeMap = new Map(graph.edges.map(edge => [`${edge.from}|${edge.to}`, Number(edge.value || 0)]));
@@ -622,30 +653,56 @@ function renderNetworkCrosstab(graph) {
     networkCrosstab.innerHTML = '<div class="network-crosstab-empty">No course-job pairs for this filter.</div>';
     return;
   }
-  const header = jobs.map(job => `<th class="network-crosstab-job" title="${escapeHtml(job.title || job.label)}"><span>${escapeHtml(job.label)}</span></th>`).join('');
-  const rows = courses.map(course => {
-    const cells = jobs.map(job => {
-      const value = edgeMap.get(`${course.id}|${job.id}`) || edgeMap.get(`${job.id}|${course.id}`) || 0;
-      const intensity = Math.max(0, Math.min(1, value / 100)).toFixed(2);
-      const title = value ? `Cosine similarity: ${Math.round(value)}%` : 'No similarity link';
-      return `<td><div class="network-crosstab-cell ${value ? '' : 'empty'}" title="${title}" style="--i:${intensity};">${value ? Math.round(value) : ''}</div></td>`;
-    }).join('');
-    return `<tr><th class="network-crosstab-course" title="${escapeHtml(course.title || course.label)}">${escapeHtml(course.label)}</th>${cells}</tr>`;
-  }).join('');
-  networkCrosstab.innerHTML = `<table class="network-crosstab-table"><thead><tr><th></th>${header}</tr></thead><tbody>${rows}</tbody></table>`;
+  const z = courses.map(course => jobs.map(job => {
+    const value = edgeMap.get(`${course.id}|${job.id}`) || edgeMap.get(`${job.id}|${course.id}`) || 0;
+    return value ? Math.round(value) : null;
+  }));
+  const hover = courses.map((course, courseIndex) => jobs.map((job, jobIndex) => {
+    const value = z[courseIndex][jobIndex];
+    return `${course.title || course.label}<br>${job.title || job.label}<br>${value ? 'Cosine similarity: ' + value + '%' : 'No similarity link'}`;
+  }));
+  Plotly.newPlot(networkCrosstab, [{
+    type:'heatmap',
+    x:jobs.map(job => job.label),
+    y:courses.map(course => course.label),
+    z,
+    text:hover,
+    hovertemplate:'%{text}<extra></extra>',
+    colorscale:[
+      [0, '#f4f1eb'],
+      [.35, '#ffd5ad'],
+      [.65, '#f58220'],
+      [1, '#111111'],
+    ],
+    zmin:0,
+    zmax:100,
+    colorbar:{ title:'Score %', thickness:12 },
+    xgap:2,
+    ygap:2,
+  }], {
+    paper_bgcolor:'#ffffff',
+    plot_bgcolor:'#ffffff',
+    margin:{ l:170, r:34, t:36, b:130 },
+    font:{ family:'Inter, Arial', size:11, color:'#101010' },
+    title:{ text:'Course-to-Job Similarity Cross-tab', font:{ size:15 } },
+    xaxis:{ tickangle:-38, automargin:true, side:'bottom' },
+    yaxis:{ automargin:true, autorange:'reversed' },
+  }, { responsive:true, displayModeBar:false });
 }
 
 function styleNetworkEdge(edge) {
   const value = Number(edge.value || 1);
+  const isSkillLink = edge.group === 'skill-link';
   const strong = value >= 70;
   const medium = value >= 45;
   return {
     ...edge,
-    width: strong ? 3 : medium ? 2 : 1,
+    dashes: isSkillLink ? [4, 5] : false,
+    width: isSkillLink ? 1.5 : strong ? 3 : medium ? 2 : 1,
     color: {
-      color: strong ? '#111111' : medium ? '#d47722' : '#d7c2ad',
-      highlight:'#f58220',
-      opacity: strong ? .72 : medium ? .54 : .32,
+      color: isSkillLink ? '#7db4f5' : strong ? '#111111' : medium ? '#d47722' : '#d7c2ad',
+      highlight: isSkillLink ? '#2f80ed' : '#f58220',
+      opacity: isSkillLink ? .48 : strong ? .72 : medium ? .54 : .32,
     },
     font: { face:'Inter, Arial', size:10, color:'#706960', strokeWidth:0 },
     title: edge.title || `Cosine similarity: ${value}%`,
@@ -658,7 +715,24 @@ const skillsChart = new Chart(document.getElementById('skillsChart'), {
     { label: 'Jobs', data: [], borderColor:'#0b0b0b', backgroundColor:'rgba(11,11,11,.08)', tension:.35, fill:true },
     { label: 'Courses', data: [], borderColor:'#f58220', backgroundColor:'rgba(245,130,32,.18)', tension:.35, fill:true }
   ] },
-  options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ boxWidth:10 } } }, scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } } }
+  options: {
+    responsive:true,
+    maintainAspectRatio:false,
+    plugins:{
+      legend:{ labels:{ boxWidth:10 } },
+      tooltip:{
+        callbacks:{
+          label(context) {
+            const label = context.dataset.label || '';
+            const value = Number(context.raw || 0);
+            if (label === 'Courses' && value === 0) return 'Courses: not detected';
+            return `${label}: ${value}`;
+          }
+        }
+      }
+    },
+    scales:{ y:{ beginAtZero:true, grid:{ color:'#ece7da' } }, x:{ grid:{ display:false } } }
+  }
 });
 
 async function refreshMetrics() {
@@ -728,7 +802,7 @@ async function refreshNetwork() {
     networkGraph3d?.graphData({ nodes:[], links:[] });
     renderNetworkCrosstab(graph);
     setInsight('networkInsight', explainNetwork(graph));
-    lastNetworkSignature = signature([graph.run_id, networkSchoolFilter?.value, networkJobFilter?.value, [], []]);
+    lastNetworkSignature = signature([graph.run_id, networkSchoolFilter?.value, networkJobFilter?.value, networkClusterMode, [], []]);
     return;
   }
   setInsight('networkInsight', explainNetwork(graph));
@@ -736,8 +810,9 @@ async function refreshNetwork() {
     graph.run_id,
     networkSchoolFilter?.value,
     networkJobFilter?.value,
-    graph.nodes.map(node => [node.id, node.label, node.group, node.x, node.y]),
-    graph.edges.map(edge => [edge.from, edge.to, edge.value]),
+    networkClusterMode,
+    graph.nodes.map(node => [node.id, node.label, node.group, node.x, node.y, node.entity_id]),
+    graph.edges.map(edge => [edge.from, edge.to, edge.value, edge.group]),
   ]);
   if (networkSignature === lastNetworkSignature) return;
   lastNetworkSignature = networkSignature;
@@ -793,6 +868,13 @@ fitNetworkBtn?.addEventListener('click', () => {
 network2dBtn?.addEventListener('click', () => setNetworkMode('2d'));
 network3dBtn?.addEventListener('click', () => setNetworkMode('3d'));
 networkCrosstabBtn?.addEventListener('click', () => setNetworkMode('crosstab'));
+networkClusterBtn?.addEventListener('click', () => {
+  networkClusterMode = !networkClusterMode;
+  networkClusterBtn.classList.toggle('active', networkClusterMode);
+  networkClusterBtn.setAttribute('aria-pressed', networkClusterMode ? 'true' : 'false');
+  lastNetworkSignature = '';
+  refreshNetwork();
+});
 
 [networkSchoolFilter, networkJobFilter].forEach(input => {
   input?.addEventListener('change', () => {
