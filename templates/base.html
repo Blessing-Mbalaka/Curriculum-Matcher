@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}CurriculumMatch{% endblock %}</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
 <style>
 :root {
   --ink:      #0a0a0f;
@@ -18,8 +17,8 @@
   --rust:     #c94f2c;
   --blue:     #1a3a6b;
   --muted:    #7a7670;
-  --syne:     'Inter', sans-serif;
-  --sans:     'Inter', sans-serif;
+  --syne:     'Syne', sans-serif;
+  --sans:     'Instrument Sans', sans-serif;
   --mono:     'JetBrains Mono', monospace;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -48,14 +47,14 @@ body {
   overflow-y: auto;
 }
 .sidebar-brand {
-  padding: 22px 22px 18px;
+  padding: 32px 28px 24px;
   border-bottom: 1px solid rgba(255,255,255,0.08);
 }
 .brand-name {
-  font-family: var(--sans);
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0;
+  font-family: var(--syne);
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.02em;
   color: var(--lime);
   line-height: 1;
 }
@@ -123,12 +122,33 @@ body {
   z-index: 100;
 }
 .page-title {
-  font-family: var(--sans);
+  font-family: var(--syne);
   font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0;
+  font-size: 16px;
+  letter-spacing: -0.01em;
 }
 .topbar-actions { display: flex; gap: 10px; align-items: center; }
+.voice-toggle {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  min-width:78px;
+  justify-content:center;
+  padding:7px 10px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  color:var(--ink);
+  font-family:var(--mono);
+  font-size:10px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  cursor:pointer;
+}
+.voice-toggle:hover { border-color:var(--uj-orange-dark); background:var(--uj-orange-soft); }
+.voice-toggle[aria-pressed="false"] { color:var(--muted); background:var(--soft); }
+.voice-toggle.is-hidden { display:none; }
 .content { padding: 36px 40px; flex: 1; }
 
 /* ---- Alerts ---- */
@@ -186,8 +206,8 @@ body {
 
 /* ---- Stat card ---- */
 .stat-val {
-  font-family: var(--sans);
-  font-size: 36px;
+  font-family: var(--syne);
+  font-size: 42px;
   font-weight: 800;
   line-height: 1;
   color: var(--ink);
@@ -304,7 +324,7 @@ select.form-control { cursor: pointer; }
   background: #f0faf2;
 }
 .upload-zone-icon { font-size: 36px; margin-bottom: 12px; }
-.upload-zone-title { font-family: var(--sans); font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.upload-zone-title { font-family: var(--syne); font-size: 16px; font-weight: 700; margin-bottom: 6px; }
 .upload-zone-hint { font-size: 12px; color: var(--muted); }
 
 /* ---- Chips ---- */
@@ -343,8 +363,8 @@ select.form-control { cursor: pointer; }
   margin-bottom: 20px;
 }
 .section-hd h2 {
-  font-family: var(--sans);
-  font-size: 15px;
+  font-family: var(--syne);
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -368,8 +388,8 @@ select.form-control { cursor: pointer; }
 }
 .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
 .empty-title {
-  font-family: var(--sans);
-  font-size: 16px;
+  font-family: var(--syne);
+  font-size: 18px;
   font-weight: 700;
   color: var(--ink);
   margin-bottom: 8px;
@@ -410,7 +430,7 @@ select.form-control { cursor: pointer; }
   --rust: #9e2f18;
   --blue: #29384a;
   --muted: #706960;
-  --display: 'Inter', sans-serif;
+  --display: 'Syne', sans-serif;
 }
 body {
   background:
@@ -426,7 +446,7 @@ body {
   background:linear-gradient(180deg, rgba(245,130,32,.16), rgba(16,16,16,0));
 }
 .brand-name { color:var(--uj-orange); letter-spacing:0; }
-.brand-sub { color:rgba(255,255,255,.46); font-size:9px; }
+.brand-sub { color:rgba(255,255,255,.46); }
 .nav-item { border:1px solid transparent; }
 .nav-item:hover { background:rgba(245,130,32,.11); color:#fff; border-color:rgba(245,130,32,.26); }
 .nav-item.active { background:var(--uj-orange); color:#111; }
@@ -436,10 +456,8 @@ body {
   background:rgba(255,255,255,.92);
   backdrop-filter: blur(16px);
   border-bottom:1px solid rgba(245,130,32,.22);
-  padding-top:12px;
-  padding-bottom:12px;
 }
-.page-title { font-family:var(--sans); font-size:14px; letter-spacing:0; }
+.page-title { font-family:var(--display); letter-spacing:0; }
 .content { max-width:1540px; width:100%; }
 .btn, .card, .form-control, .table-wrap, .upload-zone, .alert { border-radius:8px; }
 .btn-primary { background:#111; color:#fff; border:1px solid #111; }
@@ -646,7 +664,10 @@ body {
   <div class="main">
     <div class="topbar">
       <div class="page-title">{% block page_title %}Dashboard{% endblock %}</div>
-      <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+      <div class="topbar-actions">
+        <button class="voice-toggle is-hidden" id="voiceNarrationToggle" type="button" aria-pressed="true" title="Toggle chart voice narration">Voice On</button>
+        {% block topbar_actions %}{% endblock %}
+      </div>
     </div>
     <div class="content">
       {% if messages %}
@@ -681,6 +702,95 @@ window.showToast = function({ title = 'Notice', body = '', type = 'info', timeou
   stack.appendChild(toast);
   if (timeout) setTimeout(remove, timeout);
 };
+</script>
+<script>
+(function() {
+  const canSpeak = 'speechSynthesis' in window && 'SpeechSynthesisUtterance' in window;
+  const toggle = document.getElementById('voiceNarrationToggle');
+  if (!toggle || !canSpeak) return;
+
+  const storageKey = 'curriculumMatchChartVoiceEnabled';
+  let enabled = localStorage.getItem(storageKey) !== 'false';
+  let activeInsight = null;
+  let lastText = '';
+  let lastSpokenAt = 0;
+
+  toggle.classList.remove('is-hidden');
+
+  function setToggleState() {
+    toggle.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    toggle.textContent = enabled ? 'Voice On' : 'Voice Off';
+  }
+
+  function normaliseText(value) {
+    return (value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function insightText(insight) {
+    const title = normaliseText(insight.querySelector('.graph-insight-title')?.textContent);
+    const body = normaliseText(insight.querySelector('.graph-insight-body')?.textContent);
+    if (!body || body.toLowerCase().startsWith('waiting for')) return '';
+    return title ? `${title}. ${body}` : body;
+  }
+
+  function speakInsight(insight) {
+    if (!enabled || !insight) return;
+    const text = insightText(insight);
+    if (!text) return;
+    const now = Date.now();
+    if (text === lastText && now - lastSpokenAt < 1500) return;
+
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    utterance.volume = 0.9;
+    window.speechSynthesis.speak(utterance);
+    lastText = text;
+    lastSpokenAt = now;
+  }
+
+  function enteredInsight(event) {
+    const insight = event.target.closest('.graph-insight');
+    if (!insight || insight.contains(event.relatedTarget)) return;
+    activeInsight = insight;
+    speakInsight(insight);
+  }
+
+  function leftInsight(event) {
+    const insight = event.target.closest('.graph-insight');
+    if (!insight || insight.contains(event.relatedTarget)) return;
+    if (activeInsight === insight) activeInsight = null;
+    window.speechSynthesis.cancel();
+  }
+
+  toggle.addEventListener('click', function() {
+    enabled = !enabled;
+    localStorage.setItem(storageKey, enabled ? 'true' : 'false');
+    setToggleState();
+    if (!enabled) window.speechSynthesis.cancel();
+  });
+
+  document.addEventListener('mouseover', enteredInsight);
+  document.addEventListener('mouseout', leftInsight);
+  document.addEventListener('focusin', function(event) {
+    const insight = event.target.closest('.graph-insight');
+    if (!insight) return;
+    activeInsight = insight;
+    speakInsight(insight);
+  });
+  document.addEventListener('focusout', function(event) {
+    const insight = event.target.closest('.graph-insight');
+    if (!insight || insight.contains(event.relatedTarget)) return;
+    if (activeInsight === insight) activeInsight = null;
+    window.speechSynthesis.cancel();
+  });
+  document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') window.speechSynthesis.cancel();
+  });
+
+  setToggleState();
+})();
 </script>
 {% if messages %}
 <script>

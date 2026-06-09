@@ -2,7 +2,7 @@
 {% block title %}Dashboard - CurriculumMatch{% endblock %}
 {% block page_title %}Executive Dashboard{% endblock %}
 {% block topbar_actions %}
-  <a href="{% url 'dashboard-visual-export' %}" class="btn btn-outline">Download Visual CSV</a>
+  <a href="{% url 'dashboard-visual-export' %}{% if selected_dashboard_run %}?run={{ selected_dashboard_run.id }}{% endif %}" class="btn btn-outline">Download Visual CSV</a>
   <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}
@@ -39,6 +39,29 @@
 .live-form .form-control { background:#fff; color:var(--ink); border-color:var(--rule); min-width:0; }
 .live-actions { display:flex; gap:8px; margin-top:10px; align-items:center; flex-wrap:wrap; }
 .signal-panel { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.run-history-panel {
+  grid-column:1 / -1;
+  background:#fff;
+  border:1px solid var(--rule);
+  border-radius:6px;
+  padding:14px;
+  display:grid;
+  gap:10px;
+}
+.run-history-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.run-history-title { font-weight:800; font-size:13px; }
+.run-history-select {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:8px;
+  align-items:center;
+}
+.run-history-meta { color:var(--muted); font-size:12px; }
 .metric-card {
   background:var(--surface);
   border:1px solid var(--rule);
@@ -198,6 +221,7 @@
 }
 @media (max-width:760px) {
   .signal-panel, .live-form { grid-template-columns:1fr; }
+  .run-history-select { grid-template-columns:1fr; }
   .hero-title { font-size:19px; }
   .metric-value { font-size:30px; }
   .live-actions .btn, #analysisQueueForm .btn { width:100%; justify-content:center; }
@@ -238,10 +262,33 @@
   </section>
 
   <section class="signal-panel">
+    <div class="run-history-panel">
+      <div class="run-history-head">
+        <div>
+          <div class="run-history-title">Historic Run Viewer</div>
+          <div class="run-history-meta">Choose a saved analysis run to view its dashboard metrics, network, and best matches.</div>
+        </div>
+        {% if selected_dashboard_run %}
+        <a class="btn btn-outline btn-sm" href="{% url 'analysis-results' %}?run={{ selected_dashboard_run.id }}">Open Gap Results</a>
+        {% endif %}
+      </div>
+      <form method="get" class="run-history-select" id="dashboardRunForm">
+        <select class="form-control" name="run" id="dashboardRunSelect" aria-label="Select historic analysis run">
+          {% for run in runs %}
+          <option value="{{ run.id }}" {% if selected_dashboard_run and selected_dashboard_run.id == run.id %}selected{% endif %}>
+            {{ run.name }} - {{ run.status|upper }} - {{ run.created_at|date:"d M Y H:i" }}
+          </option>
+          {% empty %}
+          <option value="">No analysis runs yet</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-outline btn-sm" type="submit" {% if not runs %}disabled{% endif %}>View Run</button>
+      </form>
+    </div>
     <div class="metric-card featured">
       <div class="metric-label">Average cosine score</div>
       <div class="metric-value" id="avgScore">{{ avg_score|floatformat:1 }}%</div>
-      <div class="metric-sub">latest analysis run</div>
+      <div class="metric-sub">{% if selected_dashboard_run %}{{ selected_dashboard_run.name }}{% else %}no selected run{% endif %}</div>
     </div>
     <div class="metric-card">
       <div class="metric-label">Job adverts</div>
@@ -355,7 +402,7 @@
     <hr class="divider">
     <div class="section-hd">
       <h2>Best Course-to-Job Matches</h2>
-      <span class="badge badge-gray">Latest analysis</span>
+      <span class="badge badge-gray">{% if selected_dashboard_run %}{{ selected_dashboard_run.name }}{% else %}No run{% endif %}</span>
     </div>
     <div class="match-list">
       {% for r in latest_results %}
@@ -400,6 +447,7 @@
 <script>
 const metricsUrl = "{% url 'dashboard-metrics' %}";
 const networkUrl = "{% url 'similarity-network' %}";
+const selectedRunId = "{% if selected_dashboard_run %}{{ selected_dashboard_run.id }}{% endif %}";
 const analysisQueueForm = document.getElementById('analysisQueueForm');
 const runBtn = document.getElementById('runBtn');
 const smokeBtn = document.getElementById('smokeBtn');
@@ -498,6 +546,7 @@ function signature(value) {
 
 function filteredNetworkUrl() {
   const url = new URL(networkUrl, window.location.origin);
+  if (selectedRunId) url.searchParams.set('run', selectedRunId);
   if (networkSchoolFilter?.value) url.searchParams.set('school', networkSchoolFilter.value);
   if (networkJobFilter?.value) url.searchParams.set('job', networkJobFilter.value);
   if (networkClusterMode) url.searchParams.set('cluster', '1');
@@ -725,7 +774,8 @@ const skillsChart = new Chart(document.getElementById('skillsChart'), {
           label(context) {
             const label = context.dataset.label || '';
             const value = Number(context.raw || 0);
-            if (label === 'Courses' && value === 0) return 'Courses: not detected';
+            if (label === 'Courses' && value === 0) return 'Courses: no matching course evidence for this skill';
+            if (label === 'Jobs' && value === 0) return 'Jobs: no matching job demand for this skill';
             return `${label}: ${value}`;
           }
         }
@@ -736,7 +786,9 @@ const skillsChart = new Chart(document.getElementById('skillsChart'), {
 });
 
 async function refreshMetrics() {
-  const response = await fetch(metricsUrl, { headers: { 'Accept':'application/json' } });
+  const url = new URL(metricsUrl, window.location.origin);
+  if (selectedRunId) url.searchParams.set('run', selectedRunId);
+  const response = await fetch(url.toString(), { headers: { 'Accept':'application/json' } });
   const data = await response.json();
   document.getElementById('jobCount').textContent = data.counts.jobs;
   document.getElementById('courseCount').textContent = data.counts.courses;
@@ -744,7 +796,14 @@ async function refreshMetrics() {
     document.getElementById('avgScore').textContent = `${data.average_score}%`;
   }
 
-  const labels = [...new Set([...data.job_skills.map(s => s.skill), ...data.course_skills.map(s => s.skill)])].slice(0, 10);
+  const demandLabels = data.job_skills.map(s => s.skill).filter(Boolean);
+  const curriculumLabels = data.course_skills.map(s => s.skill).filter(Boolean);
+  const labels = [...new Set([
+    ...demandLabels.slice(0, 5),
+    ...curriculumLabels.slice(0, 5),
+    ...demandLabels,
+    ...curriculumLabels,
+  ])].slice(0, 10);
   const jobValues = labels.map(label => data.job_skills.find(s => s.skill === label)?.frequency || 0);
   const courseValues = labels.map(label => data.course_skills.find(s => s.skill === label)?.frequency || 0);
   const skillsSignature = signature([data.visual_run?.id, labels, jobValues, courseValues]);

@@ -2,6 +2,7 @@ import hashlib
 import re
 
 from django.db import models
+from django.utils import timezone
 
 
 def normalize_job_text(value):
@@ -39,7 +40,11 @@ class JobAdvert(models.Model):
     longitude = models.FloatField(null=True, blank=True)
     summary = models.TextField(blank=True)
     position_info = models.TextField(blank=True)
+    raw_description = models.TextField(blank=True)
     description = models.TextField()
+    cleaned_payload = models.JSONField(default=dict, blank=True)
+    data_quality_flags = models.JSONField(default=list, blank=True)
+    cleaned_at = models.DateTimeField(null=True, blank=True)
     source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="upload")
     external_id = models.CharField(max_length=255, blank=True, null=True)
     fingerprint = models.CharField(max_length=64, blank=True, db_index=True, unique=True)
@@ -67,18 +72,31 @@ class JobAdvert(models.Model):
         return f"{self.title} @ {self.company or 'Unknown'}"
 
     def analysis_text(self):
+        cleaned = self.cleaned_payload or {}
+        cleaned_skills = []
+        for key in ("required_skills", "preferred_skills", "tools", "soft_skills"):
+            values = cleaned.get(key) or []
+            if isinstance(values, list):
+                cleaned_skills.extend(str(value) for value in values if value)
         parts = [
-            self.title,
+            cleaned.get("clean_title") or self.title,
             self.company,
             self.recruiter,
-            self.category,
+            cleaned.get("sector") or self.category,
+            cleaned.get("occupation_family") or "",
+            cleaned.get("seniority") or "",
             self.summary,
             self.position_info,
             self.description,
+            " ".join(cleaned_skills),
         ]
         return "\n\n".join(part for part in parts if part)
 
     def save(self, *args, **kwargs):
+        if not self.raw_description:
+            self.raw_description = self.description
+        if self.cleaned_payload and not self.cleaned_at:
+            self.cleaned_at = timezone.now()
         if not self.fingerprint:
             self.fingerprint = job_fingerprint(
                 self.title,

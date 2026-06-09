@@ -18,8 +18,8 @@ SKILL_KEYWORDS = [
     # Office tools
     "excel","word","powerpoint","outlook","microsoft office","google sheets","google docs",
     "tableau","power bi",
-    # Data & programming
-    "sql","mysql","postgresql","python","r","java","javascript","html","css",
+    # Data, analytics, and digital business
+    "sql","mysql","postgresql",
     "django","flask","data analysis","data analytics","machine learning","artificial intelligence",
     "generative ai","genai","data engineering","data science","software engineering",
     "cloud native","cloud-native","kubernetes","aws","azure","gcp","google cloud",
@@ -50,6 +50,48 @@ SKILL_KEYWORDS = [
 
 # Sort longest first so multi-word phrases match before single words
 SKILL_KEYWORDS = sorted(set(SKILL_KEYWORDS), key=len, reverse=True)
+BUSINESS_SKILL_EXCLUDED_TERMS = {
+    "algorithms",
+    "c#",
+    "c++",
+    "ci cd",
+    "ci/cd",
+    "cloud native",
+    "cloud-native",
+    "css",
+    "data engineering",
+    "data science",
+    "databases",
+    "devops",
+    "django",
+    "distributed systems",
+    "encryption",
+    "f#",
+    "flask",
+    "go",
+    "go programming language",
+    "golang",
+    "haskell",
+    "html",
+    "j2ee",
+    "java",
+    "javascript",
+    "kotlin",
+    "kubernetes",
+    "mainframe",
+    "python",
+    "r",
+    "rust",
+    "scala",
+    "site reliability engineering",
+    "software engineering",
+    "sre",
+    "technical architecture",
+    "typescript",
+    "z/os",
+}
+SKILL_KEYWORDS = [skill for skill in SKILL_KEYWORDS if skill not in BUSINESS_SKILL_EXCLUDED_TERMS]
+REGEX_EXCLUDED_SKILLS = BUSINESS_SKILL_EXCLUDED_TERMS
 
 
 def clean_text(text: str) -> str:
@@ -66,6 +108,8 @@ def extract_skills(text: str) -> List[str]:
     cleaned = clean_text(text)
     found = []
     for skill in SKILL_KEYWORDS:
+        if skill in REGEX_EXCLUDED_SKILLS:
+            continue
         normalized_skill = clean_text(skill)
         if normalized_skill and re.search(r"\b" + re.escape(normalized_skill) + r"\b", cleaned):
             found.append(skill)

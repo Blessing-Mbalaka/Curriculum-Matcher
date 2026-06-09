@@ -3,17 +3,19 @@ spaCy-backed skill extraction.
 
 The extractor uses spaCy PhraseMatcher for known skills and aliases, then adds
 lightweight phrase mining from noun chunks when a full spaCy model is present.
-It falls back to the existing regex keyword extractor if spaCy is unavailable.
+The legacy regex keyword extractor can be enabled as an explicit fallback, but
+is disabled by default because it is prone to broad false positives.
 """
 
 import logging
 from collections import Counter
 from typing import Iterable, List, Tuple
 import hashlib
+from pathlib import Path
 
 from django.conf import settings
 
-from .nlp_pipeline import SKILL_KEYWORDS, extract_skills
+from .nlp_pipeline import BUSINESS_SKILL_EXCLUDED_TERMS, SKILL_KEYWORDS, extract_skills
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +146,7 @@ def classify_skill_text(skill, mention_text="", context="", pattern="", source="
 
 class SpacySkillExtractor:
     def __init__(self):
-        self.model_name = getattr(settings, "SPACY_MODEL_NAME", "en_core_web_sm")
+        self.model_name = self._spacy_model_name()
         self.nlp = None
         self.matcher = None
         self.alias_lookup = {}
@@ -152,6 +154,46 @@ class SpacySkillExtractor:
         self.patterns_by_label = {}
         self.backend = "regex"
         self._load_spacy()
+        self._bert_ner = None
+        self._bert_backend = None
+        self._bert_min_confidence = float(getattr(settings, "BERT_SKILL_NER_MIN_CONFIDENCE", 0.65))
+        self._regex_fallback_enabled = bool(getattr(settings, "SKILL_REGEX_FALLBACK_ENABLED", False))
+        self._noun_chunk_mining_enabled = bool(getattr(settings, "SKILL_NOUN_CHUNK_MINING_ENABLED", False))
+        self._load_bert_ner()
+
+    def _spacy_model_name(self):
+        custom_path = getattr(settings, "COURSE_SKILL_NER_MODEL_PATH", "")
+        if custom_path and Path(custom_path).exists():
+            return str(custom_path)
+        return getattr(settings, "SPACY_MODEL_NAME", "en_core_web_sm")
+
+    def _load_bert_ner(self) -> None:
+        if not getattr(settings, "BERT_SKILL_NER_ENABLED", True):
+            return
+        bert_path = Path(getattr(settings, "BERT_SKILL_NER_MODEL_PATH", "models/bert_skill_ner"))
+        if not bert_path.is_absolute():
+            bert_path = Path(settings.BASE_DIR) / bert_path
+        if not (bert_path / "skill_ner_meta.json").exists():
+            return
+        try:
+            from transformers import pipeline as hf_pipeline
+        except ImportError:
+            logger.info('transformers not installed; BERT NER backend unavailable.')
+            return
+        try:
+            self._bert_ner = hf_pipeline(
+                "ner",
+                model=str(bert_path),
+                tokenizer=str(bert_path),
+                aggregation_strategy="simple",
+                device=-1,
+            )
+            self._bert_backend = str(bert_path)
+            self.backend = f"{self.backend}+bert-ner"
+            logger.info("BERT NER backend loaded from %s", bert_path)
+        except Exception as exc:
+            logger.warning("Could not load BERT NER model: %s", exc)
+            self._bert_ner = None
 
     def _load_spacy(self) -> None:
         try:
@@ -176,6 +218,8 @@ class SpacySkillExtractor:
         patterns_by_label = {}
         for skill in SKILL_KEYWORDS:
             canonical = self._canonical(skill)
+            if canonical in BUSINESS_SKILL_EXCLUDED_TERMS:
+                continue
             patterns_by_label.setdefault(canonical, set()).add(skill)
         for canonical, aliases in SKILL_ALIASES.items():
             normalized = self._canonical(canonical)
@@ -268,6 +312,8 @@ class SpacySkillExtractor:
         if not text:
             return []
         if not self.nlp or not self.matcher:
+            if not self._regex_fallback_enabled:
+                return []
             return [
                 {
                     "id": self._entity_id(self._canonical(skill)),
@@ -297,6 +343,8 @@ class SpacySkillExtractor:
             canonical = self._canonical(skill)
             if not canonical:
                 return
+            if canonical in BUSINESS_SKILL_EXCLUDED_TERMS:
+                return
             item = entities.setdefault(canonical, {
                 "id": self._entity_id(canonical),
                 "chunk_id": self._chunk_id(document_id, canonical, start, end),
@@ -324,15 +372,32 @@ class SpacySkillExtractor:
                 canonical = self._canonical(ent.ent_id_ or ent.text)
                 add_entity(canonical, ent.text, ent.start_char, ent.end_char, "ner", 0.96, ent)
 
+
+        if self._bert_ner:
+            try:
+                for bert_ent in self._bert_ner(text):
+                    if self._is_skill_bert_entity(bert_ent):
+                        score = float(bert_ent.get("score", 0.9))
+                        if score < self._bert_min_confidence:
+                            continue
+                        mention = self._bert_word(bert_ent)
+                        canonical = self._canonical(mention)
+                        if not canonical:
+                            continue
+                        add_entity(canonical, mention, bert_ent.get("start"), bert_ent.get("end"), "bert-ner", score)
+            except Exception as exc:
+                logger.debug("BERT NER pass failed: %s", exc)
+
         for match_id, start, end in self.matcher(doc):
             canonical = self.alias_lookup[self.nlp.vocab.strings[match_id]]
             span = doc[start:end]
             add_entity(canonical, span.text, span.start_char, span.end_char, "phrase_matcher", 0.92, span)
 
-        for skill in extract_skills(text):
-            add_entity(skill, skill, None, None, "regex", 0.74)
+        if self._regex_fallback_enabled:
+            for skill in extract_skills(text):
+                add_entity(skill, skill, None, None, "regex", 0.74)
 
-        if doc.has_annotation("DEP"):
+        if self._noun_chunk_mining_enabled and doc.has_annotation("DEP"):
             for skill in self._noun_chunk_skills(doc):
                 add_entity(skill, skill, None, None, "noun_chunk", 0.66)
 
@@ -361,6 +426,13 @@ class SpacySkillExtractor:
             if known_tokens and known_tokens.issubset(phrase_tokens):
                 return canonical
         return None
+
+    def _is_skill_bert_entity(self, entity):
+        label = str(entity.get("entity_group") or entity.get("entity") or "").upper()
+        return label in {"SKILL", "B-SKILL", "I-SKILL"}
+
+    def _bert_word(self, entity):
+        return str(entity.get("word") or entity.get("text") or "").replace("##", "").strip()
 
     def build_skill_matrix(self, texts: Iterable[str]) -> List[Tuple[str, int]]:
         skills = []

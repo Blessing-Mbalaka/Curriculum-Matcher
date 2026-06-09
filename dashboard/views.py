@@ -3,14 +3,17 @@ import csv
 from datetime import timedelta
 import hashlib
 from io import BytesIO
+from pathlib import Path
+import re
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import Avg
 from django.utils import timezone
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.urls import reverse
 from django.views import View
 from django.views.generic import TemplateView, ListView
@@ -19,6 +22,8 @@ from courses.models import Course, Module
 from jobs.models import JobAdvert
 from jobs.ingestion import extract_advert_metadata, extract_advert_sections, parse_advert_date
 from analysis.models import AnalysisRun, GapResult, SkillMatrix, TaskRecord
+from analysis.course_skill_ner import collect_training_examples
+from analysis.nlp_pipeline import BUSINESS_SKILL_EXCLUDED_TERMS
 from analysis.spacyskillextraction import classify_skill_text
 # Plain functions now — no .delay(), no Celery
 from analysis.tasks import (
@@ -203,6 +208,32 @@ def actual_skill_rows(rows, limit=10):
     ][:limit]
 
 
+def current_extracted_skill_rows(model, limit=10):
+    counter = Counter()
+    for obj in model.objects.only("skills_extracted", "skill_entities").iterator(chunk_size=200):
+        raw_entities = getattr(obj, "skill_entities", None) or getattr(obj, "skills_extracted", None) or []
+        document_skills = set()
+        for raw in raw_entities:
+            if isinstance(raw, dict):
+                if (
+                    raw.get("skill_type") == "exclude"
+                    or raw.get("label") == "exclude"
+                    or raw.get("source") == "regex"
+                ):
+                    continue
+                skill = raw.get("skill") or raw.get("text") or ""
+            else:
+                skill = str(raw or "")
+            skill = " ".join(skill.lower().replace("-", " ").split())
+            if skill and skill not in BUSINESS_SKILL_EXCLUDED_TERMS:
+                document_skills.add(skill)
+        counter.update(document_skills)
+    return [
+        {"skill": skill, "frequency": frequency}
+        for skill, frequency in counter.most_common(limit)
+    ]
+
+
 def skill_tokens(value):
     stop_words = {"and", "the", "for", "with", "of", "in", "to", "a", "an"}
     clean = "".join(ch.lower() if ch.isalnum() or ch in "+# " else " " for ch in value or "")
@@ -379,6 +410,9 @@ def entity_row(source_type, source_obj, entity, source_label, parent_label=""):
             "end": None,
             "label_status": "legacy",
         })
+    if " ".join((normalized.get("skill") or "").lower().replace("-", " ").split()) in BUSINESS_SKILL_EXCLUDED_TERMS:
+        normalized["label"] = "exclude"
+        normalized["skill_type"] = "exclude"
     extracted_date = getattr(source_obj, "created_at", None)
     if isinstance(source_obj, JobAdvert):
         extracted_date = source_obj.date_posted or source_obj.created_at
@@ -428,7 +462,10 @@ def iter_skill_entity_rows():
 
 
 def filtered_skill_entity_rows(request):
-    rows = list(iter_skill_entity_rows())
+    rows = [
+        row for row in iter_skill_entity_rows()
+        if row.get("skill_type") != "exclude" and row.get("label") != "exclude"
+    ]
     source = request.GET.get("source", "").strip()
     skill_type = request.GET.get("skill_type", "").strip()
     sector = request.GET.get("sector", "").strip()
@@ -563,10 +600,26 @@ class DashboardView(TemplateView):
     def get_context_data(self, **kwargs):
         mark_stale_tasks()
         ctx = super().get_context_data(**kwargs)
+        runs = AnalysisRun.objects.order_by("-created_at")
+        selected_run = None
+        run_id = self.request.GET.get("run")
+        if run_id:
+            selected_run = get_object_or_404(AnalysisRun, id=run_id)
+        else:
+            selected_run = runs.filter(results__isnull=False).distinct().first() or runs.first()
+        selected_results = (
+            GapResult.objects
+            .filter(run=selected_run)
+            .select_related("course", "job")
+            if selected_run
+            else GapResult.objects.none()
+        )
         ctx["course_count"] = Course.objects.count()
         ctx["module_count"] = sum(c.modules.count() for c in Course.objects.prefetch_related("modules"))
         ctx["job_count"] = JobAdvert.objects.count()
-        ctx["last_run"] = AnalysisRun.objects.first()
+        ctx["runs"] = runs[:40]
+        ctx["selected_dashboard_run"] = selected_run
+        ctx["last_run"] = runs.first()
         ctx["pending_tasks"] = TaskRecord.objects.filter(status__in=["PENDING", "STARTED"]).count()
         ctx["live_task"] = (
             TaskRecord.objects
@@ -578,8 +631,8 @@ class DashboardView(TemplateView):
         )
         latest_jobs_only = TaskRecord.objects.filter(run_name__startswith="Jobs Only").order_by("-created_at").first()
         ctx["should_autostart_jobs"] = not ctx["live_task"] and not (latest_jobs_only and latest_jobs_only.status == "STOPPED")
-        ctx["avg_score"] = (GapResult.objects.aggregate(v=Avg("similarity_score"))["v"] or 0) * 100
-        ctx["latest_results"] = GapResult.objects.select_related("course", "job").order_by("-run__created_at", "-similarity_score")[:8]
+        ctx["avg_score"] = (selected_results.aggregate(v=Avg("similarity_score"))["v"] or 0) * 100
+        ctx["latest_results"] = selected_results.order_by("-similarity_score")[:8]
         ctx["network_schools"] = (
             Course.objects
             .exclude(university_name="")
@@ -732,6 +785,124 @@ class SkillEntityCsvExportView(View):
                 row["text"], row["start"], row["end"], row["label_status"], row["unique_key"],
             ])
         return response
+
+
+def course_skill_training_rows():
+    modules = Module.objects.select_related("course").order_by("course__code", "order", "name", "id")
+    for module in modules:
+        content = module.content or ""
+        entities = [
+            entity_row("module", module, entity, module.name, module.course.code or module.course.name)
+            for entity in (module.skill_entities or module.skills_extracted or [])
+        ]
+        span_entities = [
+            entity for entity in entities
+            if entity.get("start") is not None and entity.get("end") is not None
+        ]
+        token_matches = list(re.finditer(r"\S+", content))
+        for token_index, match in enumerate(token_matches):
+            token_start = match.start()
+            token_end = match.end()
+            matched_entity = next(
+                (
+                    entity for entity in span_entities
+                    if int(entity["start"]) <= token_start < int(entity["end"])
+                ),
+                None,
+            )
+            label = "O"
+            if matched_entity:
+                label = "B-SKILL" if token_start == int(matched_entity["start"]) else "I-SKILL"
+            yield {
+                "dataset_row_type": "token",
+                "course_id": module.course_id,
+                "course_code": module.course.code,
+                "course_name": module.course.name,
+                "university_name": module.university_name or module.course.university_name,
+                "country": module.country or module.course.country,
+                "module_id": module.id,
+                "module_name": module.name,
+                "token_index": token_index,
+                "token": match.group(),
+                "bio_label": label,
+                "entity_id": matched_entity["id"] if matched_entity else "",
+                "chunk_id": matched_entity["chunk_id"] if matched_entity else "",
+                "skill": matched_entity["skill"] if matched_entity else "",
+                "skill_type": matched_entity["skill_type"] if matched_entity else "",
+                "tier": matched_entity["tier"] if matched_entity else "",
+                "extractor_source": matched_entity["source"] if matched_entity else "",
+                "confidence": matched_entity["confidence"] if matched_entity else "",
+                "label_status": matched_entity["label_status"] if matched_entity else "",
+                "char_start": token_start,
+                "char_end": token_end,
+                "context": content[max(0, token_start - 160):min(len(content), token_end + 160)].replace("\n", " "),
+            }
+        for entity in entities:
+            if entity.get("start") is not None and entity.get("end") is not None:
+                continue
+            yield {
+                "dataset_row_type": "entity_without_offsets",
+                "course_id": module.course_id,
+                "course_code": module.course.code,
+                "course_name": module.course.name,
+                "university_name": module.university_name or module.course.university_name,
+                "country": module.country or module.course.country,
+                "module_id": module.id,
+                "module_name": module.name,
+                "token_index": "",
+                "token": "",
+                "bio_label": "B-SKILL",
+                "entity_id": entity["id"],
+                "chunk_id": entity["chunk_id"],
+                "skill": entity["skill"],
+                "skill_type": entity["skill_type"],
+                "tier": entity["tier"],
+                "extractor_source": entity["source"],
+                "confidence": entity["confidence"],
+                "label_status": entity["label_status"],
+                "char_start": entity.get("start") or "",
+                "char_end": entity.get("end") or "",
+                "context": entity.get("text") or entity["skill"],
+            }
+
+
+class CourseSkillTrainingCsvExportView(View):
+    def get(self, request):
+        response = csv_download_response("course-skill-ner-training-dataset.csv")
+        writer = csv.writer(response)
+        headers = [
+            "dataset_row_type", "course_id", "course_code", "course_name",
+            "university_name", "country", "module_id", "module_name",
+            "token_index", "token", "bio_label", "entity_id", "chunk_id",
+            "skill", "skill_type", "tier", "extractor_source", "confidence",
+            "label_status", "char_start", "char_end", "context",
+        ]
+        writer.writerow(headers)
+        for row in course_skill_training_rows():
+            writer.writerow([row.get(header, "") for header in headers])
+        return response
+
+
+class CleanedSkillCsvDownloadView(View):
+    allowed_files = {
+        "courses": "refined-course-skills.csv",
+        "jobs": "refined-job-skills.csv",
+        "summary": "refined-skill-summary.csv",
+    }
+
+    def get(self, request, file_key):
+        filename = self.allowed_files.get(file_key)
+        if not filename:
+            raise Http404("Unknown cleaned skill CSV.")
+        csv_path = Path(settings.BASE_DIR) / "csv" / filename
+        if not csv_path.exists():
+            raise Http404("Cleaned skill CSV has not been generated yet.")
+        return FileResponse(
+            csv_path.open("rb"),
+            as_attachment=True,
+            filename=filename,
+            content_type="text/csv",
+        )
 
 
 class JobCsvExportView(View):
@@ -1554,9 +1725,16 @@ def latest_visual_run():
     return run
 
 
+def visual_run_from_request(request):
+    run_id = request.GET.get("run")
+    if run_id:
+        return get_object_or_404(AnalysisRun, id=run_id)
+    return latest_visual_run()
+
+
 class DashboardVisualCsvExportView(View):
     def get(self, request):
-        visual_run = latest_visual_run()
+        visual_run = visual_run_from_request(request)
         results = list(GapResult.objects.filter(run=visual_run).select_related("course", "job")) if visual_run else []
         response = csv_download_response("dashboard-visual-source.csv")
         writer = csv.writer(response)
@@ -1758,9 +1936,10 @@ def task_status_api(request, pk):
 
 
 def dashboard_metrics(request):
-    last_run = AnalysisRun.objects.first()
-    visual_run = last_run
-    if visual_run and not GapResult.objects.filter(run=visual_run).exists():
+    last_run = AnalysisRun.objects.order_by("-created_at").first()
+    run_id = request.GET.get("run")
+    visual_run = get_object_or_404(AnalysisRun, id=run_id) if run_id else last_run
+    if visual_run and not GapResult.objects.filter(run=visual_run).exists() and not run_id:
         visual_run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
     results = GapResult.objects.filter(run=visual_run).select_related("course", "job") if visual_run else GapResult.objects.none()
     score_values = list(results.values_list("similarity_score", flat=True))
@@ -1769,13 +1948,8 @@ def dashboard_metrics(request):
         idx = min(4, int(max(0, score) * 5))
         buckets[idx] += 1
 
-    job_skills = []
-    course_skills = []
-    if visual_run:
-        job_skill_rows = list(SkillMatrix.objects.filter(run=visual_run, source="jobs").values("skill", "frequency")[:30])
-        course_skill_rows = list(SkillMatrix.objects.filter(run=visual_run, source="courses").values("skill", "frequency")[:30])
-        job_skills = actual_skill_rows(job_skill_rows)
-        course_skills = actual_skill_rows(course_skill_rows)
+    job_skills = current_extracted_skill_rows(JobAdvert)
+    course_skills = current_extracted_skill_rows(Module)
 
     recent_tasks = []
     for task in TaskRecord.objects.order_by("-created_at").values("id", "run_name", "status", "progress", "notes")[:8]:
@@ -1814,9 +1988,10 @@ def similarity_network(request):
     except ImportError:
         nx = None
 
-    last_run = AnalysisRun.objects.first()
-    visual_run = last_run
-    if visual_run and not GapResult.objects.filter(run=visual_run).exists():
+    last_run = AnalysisRun.objects.order_by("-created_at").first()
+    run_id = request.GET.get("run")
+    visual_run = get_object_or_404(AnalysisRun, id=run_id) if run_id else last_run
+    if visual_run and not GapResult.objects.filter(run=visual_run).exists() and not run_id:
         visual_run = AnalysisRun.objects.filter(results__isnull=False).distinct().order_by("-created_at").first()
     school_filter = request.GET.get("school", "").strip()
     job_filter = bounded_int(request.GET.get("job"), 0, 0, 100000000) or None
@@ -2067,6 +2242,24 @@ class SkillVectorSpaceCsvExportView(View):
 
 def skill_vector_space(request):
     return JsonResponse(build_skill_vector_space_payload(request))
+
+
+def course_skill_training_readiness(request):
+    examples, skipped = collect_training_examples()
+    minimum = getattr(settings, "COURSE_SKILL_NER_MIN_EXAMPLES", 5)
+    ready = len(examples) >= minimum
+    return JsonResponse({
+        "ready": ready,
+        "status": "ready" if ready else "not_ready",
+        "examples": len(examples),
+        "minimum": minimum,
+        "skipped": skipped,
+        "message": (
+            f"Training dataset ready: {len(examples)} usable examples."
+            if ready
+            else f"Training dataset not ready: {len(examples)}/{minimum} usable examples."
+        ),
+    })
 
 
 def results_json(request):

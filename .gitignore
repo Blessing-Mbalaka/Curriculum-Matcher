@@ -43,6 +43,15 @@ db.sqlite3-journal
 .env
 .env.local
 
+# Generated NLP models
+/models/
+
+# Generated CSV audit outputs
+/csv/
+
+# Generated LLM memory outputs
+/memory/
+
 # IDE
 .vscode/
 .idea/

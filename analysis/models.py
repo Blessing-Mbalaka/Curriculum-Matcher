@@ -23,6 +23,7 @@ class GapResult(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     job = models.ForeignKey(JobAdvert, on_delete=models.CASCADE)
     similarity_score = models.FloatField(default=0)
+    score_breakdown = models.JSONField(default=dict)
     matched_skills = models.JSONField(default=list)
     missing_skills = models.JSONField(default=list)
     extra_skills = models.JSONField(default=list)

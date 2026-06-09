@@ -7,11 +7,41 @@ import logging
 from courses.models import Course, Module
 from jobs.models import JobAdvert
 from .models import AnalysisRun, GapResult, SkillMatrix
+from .course_skill_ner import ensure_course_skill_ner_model
 from .nlp_pipeline import compute_gap
 from .semantic_similarity import SemanticSimilarityService
 from .spacyskillextraction import SpacySkillExtractor
 
 logger = logging.getLogger(__name__)
+
+
+def _entity_confidence_map(skill_entities):
+    confidence_by_skill = {}
+    for entity in skill_entities or []:
+        skill = str(entity.get("skill") or "").strip().lower()
+        if not skill:
+            continue
+        try:
+            confidence = float(entity.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        confidence_by_skill[skill] = max(confidence_by_skill.get(skill, 0.0), confidence)
+    return confidence_by_skill
+
+
+def _matched_skill_confidence(matched_skills, course_entities, job_entities):
+    if not matched_skills:
+        return 0.0
+    course_confidence = _entity_confidence_map(course_entities)
+    job_confidence = _entity_confidence_map(job_entities)
+    scores = []
+    for skill in matched_skills:
+        key = str(skill or "").strip().lower()
+        course_score = course_confidence.get(key, 0.0)
+        job_score = job_confidence.get(key, 0.0)
+        if course_score or job_score:
+            scores.append((course_score + job_score) / 2)
+    return sum(scores) / len(scores) if scores else 0.0
 
 
 def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max_jobs=None) -> AnalysisRun:
@@ -56,8 +86,16 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max
             progress_callback=lambda message: report(14, message),
         )
         report(18, f"Semantic scorer ready using {scorer.backend}.")
+        report(19, "Checking course skill NER model...")
+        ner_result = ensure_course_skill_ner_model(
+            progress_callback=lambda message: report(20, message),
+        )
+        if ner_result.get("trained"):
+            report(22, f"Course skill NER model trained using {ner_result['train_examples']} examples.")
+        else:
+            report(22, f"Course skill NER training skipped: {ner_result.get('reason', 'not needed')}")
         skill_extractor = SpacySkillExtractor()
-        report(22, f"Skill extractor ready using {skill_extractor.backend}.")
+        report(23, f"Skill extractor ready using {skill_extractor.backend}.")
         report(25, "Extracting module skills...")
 
         # Vectorise modules
@@ -108,16 +146,32 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max
 
             course_vectors = [module_data[mid]["vector"] for mid in mids]
             course_skills = list({s for mid in mids for s in module_data[mid]["skills"]})
+            course_skill_entities = [
+                entity
+                for mid in mids
+                for entity in module_data[mid]["skill_entities"]
+            ]
 
             for job in jobs:
                 if job.id not in job_data:
                     continue
                 matched, missing, extra = compute_gap(course_skills, job_data[job.id]["skills"])
                 semantic_score = scorer.course_job_semantic_score(course_vectors, job_data[job.id]["vector"])
-                score = scorer.final_score(semantic_score, matched, job_data[job.id]["skills"]).final_score
+                confidence_score = _matched_skill_confidence(
+                    matched,
+                    course_skill_entities,
+                    job_data[job.id]["skill_entities"],
+                )
+                score = scorer.final_score(
+                    semantic_score,
+                    matched,
+                    job_data[job.id]["skills"],
+                    confidence_score=confidence_score,
+                )
                 gap_results.append(GapResult(
                     run=run, course=course, job=job,
-                    similarity_score=score,
+                    similarity_score=score.final_score,
+                    score_breakdown=score.as_dict(),
                     matched_skills=matched,
                     missing_skills=missing,
                     extra_skills=extra,
@@ -143,8 +197,19 @@ def run_gap_analysis(run_name: str = "Analysis Run", progress_callback=None, max
         ], ignore_conflicts=True)
 
         run.status = "done"
+        if getattr(scorer, "embedding_failures", 0):
+            run.notes = (
+                f"Analysis completed with {scorer.embedding_failures} semantic embedding "
+                "fallback(s). Affected records used neutral semantic vectors, while skill "
+                "coverage and confidence scoring still ran."
+            )
         run.save()
-        report(100, f"Analysis complete. Created {len(gap_results)} results.")
+        fallback_note = (
+            f" {scorer.embedding_failures} semantic input(s) were bypassed."
+            if getattr(scorer, "embedding_failures", 0)
+            else ""
+        )
+        report(100, f"Analysis complete. Created {len(gap_results)} results.{fallback_note}")
         logger.info(f"Analysis '{run.name}' complete — {len(gap_results)} results.")
 
     except Exception as exc:

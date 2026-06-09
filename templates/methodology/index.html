@@ -273,15 +273,173 @@
 .method-table { width:100%; font-size:13px; }
 .method-table td:first-child { font-weight:700; width:160px; }
 .badge-line { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+.visual-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-top:18px; }
+.visual-tile {
+  min-height:132px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  padding:14px;
+  display:grid;
+  gap:10px;
+  align-content:start;
+}
+.visual-tile b { font-size:13px; }
+.visual-tile span { color:var(--muted); font-size:11px; line-height:1.4; }
+.tile-icon {
+  width:38px;
+  height:38px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  background:#0b0b0b;
+  color:var(--gold);
+  font-family:var(--mono);
+  font-weight:800;
+  font-size:12px;
+}
+.preprocess-visual {
+  display:grid;
+  grid-template-columns:1fr 58px 1fr;
+  gap:14px;
+  align-items:stretch;
+  margin-top:18px;
+}
+.pre-lane {
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  padding:14px;
+  display:grid;
+  gap:12px;
+  align-content:start;
+}
+.pre-lane h3 { margin:0; font-size:14px; }
+.token-strip { display:flex; flex-wrap:wrap; gap:7px; }
+.token-chip {
+  font-family:var(--mono);
+  font-size:10px;
+  border:1px solid var(--rule);
+  border-radius:999px;
+  padding:4px 8px;
+  background:#fbfaf6;
+}
+.token-chip.keep { border-color:#ffbd80; background:#fff7ed; color:#7b4b16; }
+.pre-arrow {
+  display:grid;
+  place-items:center;
+  color:var(--gold-dark);
+  font-family:var(--mono);
+  font-weight:900;
+  min-height:120px;
+}
+.score-visual {
+  display:grid;
+  gap:10px;
+  margin-top:16px;
+}
+.score-bar {
+  display:grid;
+  grid-template-columns:132px 1fr 48px;
+  gap:12px;
+  align-items:center;
+}
+.score-bar label { font-size:12px; font-weight:700; }
+.score-track {
+  height:14px;
+  border-radius:999px;
+  overflow:hidden;
+  background:#f0ebe2;
+  border:1px solid var(--rule);
+}
+.score-fill { height:100%; background:linear-gradient(90deg, #0b0b0b, var(--gold)); }
+.score-fill.skill { background:linear-gradient(90deg, #3c3327, #b85f09); }
+.score-fill.confidence { background:linear-gradient(90deg, #0b0b0b, #ffbd80); }
+.score-fill.tree { background:linear-gradient(90deg, #7b4b16, var(--gold)); }
+.score-bar span { font-family:var(--mono); font-size:11px; color:var(--muted); text-align:right; }
+.model-stack {
+  display:grid;
+  gap:10px;
+  margin-top:16px;
+}
+.model-layer {
+  display:grid;
+  grid-template-columns:92px 1fr 74px;
+  gap:12px;
+  align-items:center;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:11px;
+  background:#fff;
+}
+.model-layer b { font-size:12px; }
+.model-layer span { color:var(--muted); font-size:11px; }
+.model-pill {
+  border-radius:999px;
+  padding:4px 8px;
+  text-align:center;
+  background:#0b0b0b;
+  color:var(--gold);
+  font-family:var(--mono);
+  font-size:10px;
+}
+.tree-visual {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:16px;
+}
+.tree-node {
+  min-height:74px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:12px;
+  background:#fff;
+  display:grid;
+  align-content:center;
+  gap:5px;
+}
+.tree-node.root { grid-column:1 / -1; background:#0b0b0b; color:#fff; border-color:#0b0b0b; }
+.tree-node.root span { color:rgba(255,255,255,.7); }
+.tree-node.good { border-color:#ffbd80; background:#fff7ed; }
+.tree-node b { font-size:12px; }
+.tree-node span { color:var(--muted); font-size:11px; }
+.mini-matrix {
+  display:grid;
+  grid-template-columns:90px repeat(4, 1fr);
+  gap:6px;
+  margin-top:16px;
+}
+.matrix-cell {
+  min-height:42px;
+  border-radius:6px;
+  display:grid;
+  place-items:center;
+  font-family:var(--mono);
+  font-size:11px;
+  background:#fbfaf6;
+  border:1px solid var(--rule);
+}
+.matrix-cell.hd { background:#0b0b0b; color:#fff; }
+.matrix-cell.a { background:#fff3df; }
+.matrix-cell.b { background:#ffd7a3; }
+.matrix-cell.c { background:#f5a34f; color:#0b0b0b; font-weight:800; }
+.matrix-cell.d { background:#8c4d0c; color:#fff; font-weight:800; }
 @media (max-width:1100px) {
   .method-hero, .method-grid, .method-two, .funnel-wrap { grid-template-columns:1fr; }
   .flow-map { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .flow-node::after { display:none; }
+  .visual-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width:700px) {
   .method-title { font-size:28px; }
   .flow-map { grid-template-columns:1fr; }
   .calc-row, .viz-row { grid-template-columns:1fr; }
+  .visual-grid, .preprocess-visual, .tree-visual { grid-template-columns:1fr; }
+  .pre-arrow { min-height:28px; }
+  .score-bar, .model-layer { grid-template-columns:1fr; }
+  .score-bar span { text-align:left; }
+  .mini-matrix { grid-template-columns:1fr 1fr; }
 }
 </style>
 {% endblock %}
@@ -300,6 +458,8 @@
         <span class="badge badge-gray">Cosine similarity</span>
         <span class="badge badge-gray">Skill coverage</span>
         <span class="badge badge-gray">NER review</span>
+        <span class="badge badge-gray">BERT skill NER</span>
+        <span class="badge badge-gray">Decision tree ranking</span>
         <span class="badge badge-gray">Forecasting</span>
         <span class="badge badge-gray">Network visualisation</span>
       </div>
@@ -315,11 +475,11 @@
       </div>
       <div class="pipeline-step">
         <div class="step-num">03</div>
-        <div><strong>Embed and extract skills</strong><span>Documents become semantic vectors; spaCy phrase matching, aliases, NER entities, and lightweight phrase mining extract explicit skill terms.</span></div>
+        <div><strong>Embed and extract skills</strong><span>Documents become semantic vectors; fine-tuned BERT, spaCy NER, phrase matching, aliases, and lightweight phrase mining extract explicit skill terms.</span></div>
       </div>
       <div class="pipeline-step">
         <div class="step-num">04</div>
-        <div><strong>Score, filter, and visualise</strong><span>Cosine scores, skill gaps, Plotly heatmaps, forecasts, source tiles, and semantic skill clusters make alignment inspectable.</span></div>
+        <div><strong>Score, filter, and visualise</strong><span>Cosine scores, skill gaps, extraction confidence, decision-tree ranking, Plotly heatmaps, forecasts, source tiles, and semantic skill clusters make alignment inspectable.</span></div>
       </div>
     </div>
   </section>
@@ -349,14 +509,14 @@
       <div class="flow-node">
         <div class="flow-icon">03</div>
         <h3>Extract Skills</h3>
-        <p>spaCy NER, phrase matching, aliases, regex fallback, and phrase mining create reviewable skill entities with evidence metadata.</p>
-        <div class="flow-tags"><span class="flow-tag">NER</span><span class="flow-tag">skill type</span><span class="flow-tag">sector</span></div>
+        <p>Fine-tuned BERT, spaCy NER, phrase matching, aliases, regex fallback, and phrase mining create reviewable skill entities with evidence metadata.</p>
+        <div class="flow-tags"><span class="flow-tag">BERT</span><span class="flow-tag">NER</span><span class="flow-tag">skill type</span><span class="flow-tag">sector</span></div>
       </div>
       <div class="flow-node">
         <div class="flow-icon">04</div>
         <h3>Embed and Compare</h3>
-        <p>Modules and jobs are embedded as normalised vectors, compared with cosine similarity, and blended with explicit skill coverage.</p>
-        <div class="flow-tags"><span class="flow-tag">vectors</span><span class="flow-tag">cosine</span></div>
+        <p>Modules and jobs are embedded as normalised vectors, compared with cosine similarity, and blended with explicit skill coverage, extraction confidence, and a decision-tree score.</p>
+        <div class="flow-tags"><span class="flow-tag">vectors</span><span class="flow-tag">cosine</span><span class="flow-tag">tree</span></div>
       </div>
       <div class="flow-node">
         <div class="flow-icon">05</div>
@@ -377,7 +537,7 @@
         <div class="funnel-stage">Raw evidence<span>course text, uploads, jobs, scraped pages</span></div>
         <div class="funnel-stage">Structured records<span>modules, adverts, dates, sectors, titles</span></div>
         <div class="funnel-stage">Extracted skill evidence<span>NER entities, aliases, confidence, review status</span></div>
-        <div class="funnel-stage">Comparable signals<span>embeddings, cosine scores, skill coverage</span></div>
+        <div class="funnel-stage">Comparable signals<span>embeddings, cosine scores, skill coverage, confidence</span></div>
         <div class="funnel-stage">Actionable outputs<span>gaps, clusters, forecasts, exports, reports</span></div>
       </div>
       <div class="flow-checklist">
@@ -387,12 +547,35 @@
         </div>
         <div class="flow-check">
           <div class="flow-dot">✓</div>
-          <div><b>Every match has two signals</b><span>Semantic similarity captures meaning in the text; explicit skill coverage confirms whether named job skills are present in curriculum evidence.</span></div>
+          <div><b>Every match has multiple signals</b><span>Semantic similarity captures meaning in the text; explicit skill coverage, extraction confidence, and decision-tree ranking confirm whether named job skills are present in curriculum evidence.</span></div>
         </div>
         <div class="flow-check">
           <div class="flow-dot">✓</div>
           <div><b>Every decision remains reviewable</b><span>Analysts can inspect source rows, edit extracted skill labels, export CSV evidence, and open the vector space to inspect skill associations.</span></div>
         </div>
+      </div>
+    </div>
+
+    <div class="visual-grid" aria-label="Pipeline signal map">
+      <div class="visual-tile">
+        <div class="tile-icon">TXT</div>
+        <b>Raw text</b>
+        <span>Course modules and job adverts stay traceable as source evidence.</span>
+      </div>
+      <div class="visual-tile">
+        <div class="tile-icon">NER</div>
+        <b>Skill evidence</b>
+        <span>BERT, spaCy, phrase rules, aliases, and regex create reviewable entities.</span>
+      </div>
+      <div class="visual-tile">
+        <div class="tile-icon">VEC</div>
+        <b>Semantic vectors</b>
+        <span>Embeddings compare meaning even when wording differs across sources.</span>
+      </div>
+      <div class="visual-tile">
+        <div class="tile-icon">RANK</div>
+        <b>Ranked output</b>
+        <span>Final scores combine semantics, coverage, confidence, and tree logic.</span>
       </div>
     </div>
   </section>
@@ -415,13 +598,62 @@
     </div>
   </section>
 
+  <section class="card">
+    <div class="section-hd"><h2>Preprocessing Boundary</h2><span class="badge badge-gold">Natural text preserved</span></div>
+    <p class="method-text">
+      Course material is lightly cleaned but not aggressively stripped before BERT, spaCy, or semantic embedding. The system preserves natural sentence context because words such as with, for, in, to, and and help contextual models understand whether a phrase is a skill, an outcome, a prerequisite, or general description.
+    </p>
+    <div class="preprocess-visual" aria-label="Preprocessing split diagram">
+      <div class="pre-lane">
+        <h3>Contextual model path</h3>
+        <div class="token-strip">
+          <span class="token-chip keep">students</span>
+          <span class="token-chip keep">apply</span>
+          <span class="token-chip keep">financial</span>
+          <span class="token-chip keep">modelling</span>
+          <span class="token-chip keep">in</span>
+          <span class="token-chip keep">strategy</span>
+        </div>
+        <p class="method-text">Natural wording stays intact for BERT, spaCy, and embeddings.</p>
+      </div>
+      <div class="pre-arrow">SPLIT</div>
+      <div class="pre-lane">
+        <h3>Exact-match fallback path</h3>
+        <div class="token-strip">
+          <span class="token-chip">financial</span>
+          <span class="token-chip">modelling</span>
+          <span class="token-chip">strategy</span>
+        </div>
+        <p class="method-text">Normalized tokens support phrase matching, aliases, regex, and fallback matching.</p>
+      </div>
+    </div>
+    <div class="calc-list">
+      <div class="calc-row">
+        <b>BERT and embeddings</b>
+        <span>These models receive natural course text with whitespace, bullet, line-break, and obvious extraction-noise cleanup only. Stop-word removal is avoided because it can damage sentence meaning and weaken contextual skill detection.</span>
+      </div>
+      <div class="calc-row">
+        <b>Rule-based fallback</b>
+        <span>Lowercasing, punctuation cleanup, and token normalization are used only for phrase matching, regex matching, aliases, and Word2Vec fallback tokenization.</span>
+      </div>
+      <div class="calc-row">
+        <b>Why separate paths?</b>
+        <span>The semantic path needs readable text; the exact-match path needs normalized tokens. Keeping both paths separate improves recall without throwing away context.</span>
+      </div>
+    </div>
+  </section>
+
   <section class="method-two">
     <div class="card">
       <div class="section-hd"><h2>NER Skill Evidence</h2><span class="badge badge-gold">Reviewable records</span></div>
       <p class="method-text">
-        Jobs and course modules store both simple skill lists and richer NER skill entities. Each entity can include a stable skill ID, label, tier, skill type, source method, confidence, mention count, pattern, position signature, extracted text, and review status.
+        Jobs and course modules store both simple skill lists and richer NER skill entities. Each entity can include a stable skill ID, label, tier, skill type, source method, confidence, mention count, pattern, position signature, extracted text, and review status. The extractor now loads a fine-tuned DistilBERT token-classification model as a contextual NER layer when <code>models/bert_skill_ner</code> is present.
       </p>
       <div class="calc-list">
+        <div class="calc-row">
+          <b>BERT skill NER</b>
+          <span>BERT reads each token in sentence context, so it can learn skill mentions that do not exactly match a fixed phrase list. Its predictions are confidence-thresholded and combined with spaCy, phrase matching, aliases, and regex evidence.</span>
+        </div>
         <div class="calc-row">
           <b>Job skills</b>
           <span>Adzuna and CSV job imports run the same spaCy-backed extractor and preserve job title, sector/category, posting date, and extraction year for filtering and trend analysis.</span>
@@ -433,6 +665,23 @@
         <div class="calc-row">
           <b>Review loop</b>
           <span>The Data Export table lets analysts edit skill, NER label, tier, and skill type inline. Reviewed skill evidence updates the stored job or module JSON.</span>
+        </div>
+      </div>
+      <div class="model-stack" aria-label="Skill extraction model stack">
+        <div class="model-layer">
+          <b>BERT NER</b>
+          <span>Contextual token classifier for flexible skill phrasing.</span>
+          <div class="model-pill">context</div>
+        </div>
+        <div class="model-layer">
+          <b>spaCy NER</b>
+          <span>Fine-tuned course skill recognizer plus entity ruler.</span>
+          <div class="model-pill">entities</div>
+        </div>
+        <div class="model-layer">
+          <b>Rules</b>
+          <span>Phrase matcher, aliases, regex, and phrase mining.</span>
+          <div class="model-pill">fallback</div>
         </div>
       </div>
     </div>
@@ -496,10 +745,83 @@
         <br>
         <div><b>Final score</b></div>
         <div>\[
-          \operatorname{final} = \frac{(0.75 \times \operatorname{semantic}) + (0.25 \times \operatorname{skillCoverage})}{0.75 + 0.25}
+          \operatorname{final} = \frac{(0.55 \times \operatorname{semantic}) + (0.20 \times \operatorname{skillCoverage}) + (0.15 \times \operatorname{confidence}) + (0.10 \times \operatorname{treeScore})}{1.00}
         \]</div>
       </div>
+      <div class="score-visual" aria-label="Final score composition">
+        <div class="score-bar">
+          <label>Semantic</label>
+          <div class="score-track"><div class="score-fill" style="width:55%;"></div></div>
+          <span>55%</span>
+        </div>
+        <div class="score-bar">
+          <label>Coverage</label>
+          <div class="score-track"><div class="score-fill skill" style="width:20%;"></div></div>
+          <span>20%</span>
+        </div>
+        <div class="score-bar">
+          <label>Confidence</label>
+          <div class="score-track"><div class="score-fill confidence" style="width:15%;"></div></div>
+          <span>15%</span>
+        </div>
+        <div class="score-bar">
+          <label>Tree score</label>
+          <div class="score-track"><div class="score-fill tree" style="width:10%;"></div></div>
+          <span>10%</span>
+        </div>
+      </div>
       <p class="method-text mt-4">Scores are clamped between 0 and 1, then displayed as percentages for interpretation.</p>
+    </div>
+  </section>
+
+  <section class="method-two">
+    <div class="card">
+      <div class="section-hd"><h2>AI Model Ensemble</h2><span class="badge badge-gold">Ranking layer</span></div>
+      <p class="method-text">
+        The ranking layer combines several models instead of relying on a single signal. Semantic embeddings measure meaning, BERT and spaCy provide skill evidence, extraction confidence measures reliability, and a decision-tree scorer applies interpretable threshold rules for strong, medium, and weak matches.
+      </p>
+      <div class="calc-list">
+        <div class="calc-row">
+          <b>Decision tree</b>
+          <span>The current tree is rule-based and transparent: high semantic similarity, strong skill coverage, and high extraction confidence produce the strongest rank boost.</span>
+        </div>
+        <div class="calc-row">
+          <b>Future supervised model</b>
+          <span>When enough reviewed outcomes exist, the same features can train a scikit-learn decision tree, random forest, or gradient boosting model without changing the stored evidence shape.</span>
+        </div>
+        <div class="calc-row">
+          <b>Stored explanation</b>
+          <span>Each match can store semantic, skill coverage, confidence, decision-tree, and final ensemble scores in the score breakdown field.</span>
+        </div>
+      </div>
+      <div class="tree-visual" aria-label="Decision tree ranking example">
+        <div class="tree-node root">
+          <b>Semantic similarity high?</b>
+          <span>Start with meaning, then check evidence strength.</span>
+        </div>
+        <div class="tree-node good">
+          <b>Coverage + confidence strong</b>
+          <span>Boost as a likely curriculum match.</span>
+        </div>
+        <div class="tree-node">
+          <b>Evidence weak</b>
+          <span>Keep visible, but rank below stronger matches.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-hd"><h2>Confidence Ranking</h2><span class="badge badge-gray">Evidence quality</span></div>
+      <p class="method-text">
+        Confidence is calculated from matched skill entities found in both course and job evidence. High-confidence BERT, spaCy, and phrase evidence increases the final rank; weak or missing skill evidence limits how far a semantic match can rise.
+      </p>
+      <div class="formula mt-4">
+        <div><b>Confidence score</b></div>
+        <div>mean matched skill confidence across course evidence and job evidence</div>
+        <br>
+        <div><b>Why this matters</b></div>
+        <div>Semantic similarity can find related meaning; confidence helps separate strong evidence from accidental wording overlap.</div>
+      </div>
     </div>
   </section>
 
@@ -550,6 +872,23 @@
       <p class="method-text mt-4">
         Jobs counts distinct job adverts in the selected result set. Courses covered counts distinct courses where that skill was found as matched evidence.
       </p>
+      <div class="mini-matrix" aria-label="Mini gap matrix visual">
+        <div class="matrix-cell hd">Skill</div>
+        <div class="matrix-cell hd">Demand</div>
+        <div class="matrix-cell hd">Covered</div>
+        <div class="matrix-cell hd">Gap</div>
+        <div class="matrix-cell hd">Rank</div>
+        <div class="matrix-cell">analytics</div>
+        <div class="matrix-cell d">189</div>
+        <div class="matrix-cell a">0</div>
+        <div class="matrix-cell d">189</div>
+        <div class="matrix-cell d">1</div>
+        <div class="matrix-cell">python</div>
+        <div class="matrix-cell c">96</div>
+        <div class="matrix-cell b">42</div>
+        <div class="matrix-cell c">54</div>
+        <div class="matrix-cell c">2</div>
+      </div>
     </div>
   </section>
 

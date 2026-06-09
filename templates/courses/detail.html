@@ -2,8 +2,64 @@
 {% block title %}{{ course.name }} - CurriculumMatch{% endblock %}
 {% block page_title %}{{ course.code }} - {{ course.name }}{% endblock %}
 {% block topbar_actions %}
+  <a href="{% url 'course-skill-audit' course.pk %}" class="btn btn-primary">Audit Skills</a>
   <a href="{% url 'course-edit' course.pk %}" class="btn btn-outline">Edit Course</a>
   <a href="{% url 'course-list' %}" class="btn btn-outline">All Courses</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.skill-enhance-form {
+  border-top:1px solid var(--rule);
+  padding-top:12px;
+}
+.skill-clean-form {
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+}
+.skill-clean-chip {
+  border:1px solid #ffbd80;
+  background:#fff7ed;
+  color:#6d3f08;
+  border-radius:999px;
+  padding:4px 7px 4px 10px;
+  font-size:12px;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.skill-clean-chip button {
+  width:18px;
+  height:18px;
+  border:0;
+  border-radius:999px;
+  background:#0b0b0b;
+  color:var(--gold);
+  cursor:pointer;
+  font-size:12px;
+  line-height:1;
+}
+.skill-enhance-row {
+  align-items:stretch;
+}
+.skill-enhance-row textarea {
+  min-height:44px;
+  resize:vertical;
+}
+.skill-enhance-row button {
+  width:96px;
+  justify-content:center;
+}
+@media (max-width: 720px) {
+  .skill-enhance-row {
+    flex-direction:column;
+  }
+  .skill-enhance-row button {
+    width:100%;
+  }
+}
+</style>
 {% endblock %}
 
 {% block content %}
@@ -46,7 +102,31 @@
                 <span class="chip">+{{ mod.skills_extracted|length|add:"-6" }} more</span>
               {% endif %}
             </div>
+            <div class="skill-enhance-form mt-3">
+              <div class="form-label">Clean extracted skills</div>
+              <div class="chip-list">
+                {% for skill in mod.skills_extracted|slice:":12" %}
+                  <form method="post" action="{% url 'module-skill-delete' mod.pk %}" class="skill-clean-form" onsubmit="return confirm('Remove {{ skill|escapejs }} from this module?')">
+                    {% csrf_token %}
+                    <input type="hidden" name="skill" value="{{ skill }}">
+                    <input type="hidden" name="next" value="detail">
+                    <span class="skill-clean-chip">{{ skill }} <button type="submit" title="Remove skill">&times;</button></span>
+                  </form>
+                {% endfor %}
+                {% if mod.skills_extracted|length > 12 %}
+                  <a href="{% url 'course-skill-audit' course.pk %}" class="chip">Review all {{ mod.skills_extracted|length }} skills</a>
+                {% endif %}
+              </div>
+            </div>
             {% endif %}
+            <form method="post" action="{% url 'module-skill-enhance' mod.pk %}" class="skill-enhance-form mt-3">
+              {% csrf_token %}
+              <label class="form-label" for="skills-{{ mod.pk }}">Enhance extracted skills</label>
+              <div class="flex gap-2 skill-enhance-row">
+                <textarea id="skills-{{ mod.pk }}" name="skills" rows="2" class="form-control" placeholder="Add missed skills, separated by commas or new lines"></textarea>
+                <button type="submit" class="btn btn-outline btn-sm">Add Skills</button>
+              </div>
+            </form>
           </div>
           <div class="flex gap-2" style="flex-shrink:0;">
             <a href="{% url 'module-edit' mod.pk %}" class="btn btn-outline btn-sm">Edit</a>

@@ -3,18 +3,21 @@ from django.urls import path
 from courses.views import (
     CourseListView, CourseCreateView, CourseDetailView,
     CourseEditView, CourseDeleteView,
-    ModuleCreateView, ModuleEditView, ModuleDeleteView,
+    CourseSkillAuditView,
+    ModuleCreateView, ModuleEditView, ModuleDeleteView, ModuleSkillEnhanceView,
+    ModuleSkillDeleteView,
 )
 from dashboard.views import (
     DashboardView, JobUploadView, JobListView, JobDeleteView,
     RunAnalysisView, AnalysisResultsView,
     StartContinuousJobsView, StartJobsOnlyView, StopTaskView, TaskListView,
     TechnicalReportExportView, DataExportView, SkillEntityUpdateView,
-    SkillEntityCsvExportView, JobCsvExportView, DataExportVisualCsvExportView,
+    SkillEntityCsvExportView, CourseSkillTrainingCsvExportView,
+    CleanedSkillCsvDownloadView, JobCsvExportView, DataExportVisualCsvExportView,
     SkillVectorSpaceView, SkillVectorSpaceCsvExportView,
     DashboardVisualCsvExportView, AnalysisVisualCsvExportView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
-    skill_vector_space,
+    skill_vector_space, course_skill_training_readiness,
 )
 from course_scraper.views import CourseScraperView, StartCourseScrapeView, scrape_status_api
 from methodology.views import MethodologyView
@@ -29,6 +32,7 @@ urlpatterns = [
     path("courses/", CourseListView.as_view(), name="course-list"),
     path("courses/new/", CourseCreateView.as_view(), name="course-create"),
     path("courses/<int:pk>/", CourseDetailView.as_view(), name="course-detail"),
+    path("courses/<int:pk>/skills/audit/", CourseSkillAuditView.as_view(), name="course-skill-audit"),
     path("courses/<int:pk>/edit/", CourseEditView.as_view(), name="course-edit"),
     path("courses/<int:pk>/delete/", CourseDeleteView.as_view(), name="course-delete"),
     path("course-scraper/", CourseScraperView.as_view(), name="course-scraper"),
@@ -37,6 +41,8 @@ urlpatterns = [
     # Modules
     path("courses/<int:course_pk>/modules/add/", ModuleCreateView.as_view(), name="module-create"),
     path("modules/<int:pk>/edit/", ModuleEditView.as_view(), name="module-edit"),
+    path("modules/<int:pk>/skills/enhance/", ModuleSkillEnhanceView.as_view(), name="module-skill-enhance"),
+    path("modules/<int:pk>/skills/delete/", ModuleSkillDeleteView.as_view(), name="module-skill-delete"),
     path("modules/<int:pk>/delete/", ModuleDeleteView.as_view(), name="module-delete"),
 
     # Jobs
@@ -55,6 +61,8 @@ urlpatterns = [
     path("data-export/", DataExportView.as_view(), name="data-export"),
     path("data-export/vector-space/", SkillVectorSpaceView.as_view(), name="skill-vector-space"),
     path("data-export/skills.csv", SkillEntityCsvExportView.as_view(), name="skill-entity-export"),
+    path("data-export/course-skill-training.csv", CourseSkillTrainingCsvExportView.as_view(), name="course-skill-training-export"),
+    path("data-export/cleaned/<str:file_key>.csv", CleanedSkillCsvDownloadView.as_view(), name="cleaned-skill-csv-download"),
     path("data-export/jobs.csv", JobCsvExportView.as_view(), name="job-skill-export"),
     path("data-export/visuals.csv", DataExportVisualCsvExportView.as_view(), name="data-export-visual-export"),
     path("data-export/vector-space.csv", SkillVectorSpaceCsvExportView.as_view(), name="skill-vector-space-export"),
@@ -69,5 +77,6 @@ urlpatterns = [
     path("api/dashboard/metrics/", dashboard_metrics, name="dashboard-metrics"),
     path("api/dashboard/network/", similarity_network, name="similarity-network"),
     path("api/data-export/vector-space/", skill_vector_space, name="skill-vector-space-api"),
+    path("api/data-export/course-skill-training/readiness/", course_skill_training_readiness, name="course-skill-training-readiness"),
     path("api/course-scraper/status/", scrape_status_api, name="course-scraper-status"),
 ]

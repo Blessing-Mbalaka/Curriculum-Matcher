@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}Skill Audit - {{ course.name }}{% endblock %}
+{% block page_title %}Skill Audit - {{ course.code }}{% endblock %}
+{% block topbar_actions %}
+  <a href="{% url 'course-detail' course.pk %}" class="btn btn-outline">Back to Course</a>
+  <a href="{% url 'data-export' %}" class="btn btn-outline">Data Export</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.audit-summary {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:14px;
+  margin-bottom:18px;
+}
+.audit-stat {
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  padding:16px;
+}
+.audit-stat b {
+  display:block;
+  font-family:var(--display);
+  font-size:28px;
+  line-height:1;
+}
+.audit-stat span {
+  display:block;
+  color:var(--muted);
+  font-size:12px;
+  margin-top:6px;
+}
+.audit-table {
+  width:100%;
+  font-size:13px;
+}
+.audit-table th {
+  text-align:left;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--muted);
+}
+.audit-table td,
+.audit-table th {
+  padding:10px 8px;
+  border-bottom:1px solid var(--rule);
+  vertical-align:top;
+}
+.audit-table tr:last-child td {
+  border-bottom:0;
+}
+.audit-skill {
+  font-weight:700;
+}
+.audit-meta {
+  color:var(--muted);
+  font-size:12px;
+}
+@media (max-width:800px) {
+  .audit-summary { grid-template-columns:1fr; }
+  .audit-table,
+  .audit-table tbody,
+  .audit-table tr,
+  .audit-table td {
+    display:block;
+    width:100%;
+  }
+  .audit-table thead { display:none; }
+  .audit-table td { border-bottom:0; padding:5px 0; }
+  .audit-table tr { border-bottom:1px solid var(--rule); padding:10px 0; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="audit-summary">
+  <div class="audit-stat">
+    <b>{{ unique_skill_count }}</b>
+    <span>unique course skills</span>
+  </div>
+  <div class="audit-stat">
+    <b>{{ module_skill_count }}</b>
+    <span>module skill rows</span>
+  </div>
+  <div class="audit-stat">
+    <b>{{ course.modules.count }}</b>
+    <span>modules reviewed</span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-hd">
+    <div>
+      <h2>Course Skill Cleanup</h2>
+      <p class="audit-meta">Delete terms that are not real skills. This only removes the selected skill from the selected module.</p>
+    </div>
+    <span class="badge badge-gold">Manual audit</span>
+  </div>
+
+  {% if rows %}
+  <div class="table-wrap">
+    <table class="audit-table">
+      <thead>
+        <tr>
+          <th>Skill</th>
+          <th>Module</th>
+          <th>Evidence</th>
+          <th>Type</th>
+          <th>Source</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td>
+            <div class="audit-skill">{{ row.skill }}</div>
+            {% if row.confidence != "" %}<div class="audit-meta">confidence {{ row.confidence }}</div>{% endif %}
+          </td>
+          <td>{{ row.module.name }}</td>
+          <td>
+            <div>{{ row.text|default:"-" }}</div>
+            {% if row.label_status %}<div class="audit-meta">{{ row.label_status }}</div>{% endif %}
+          </td>
+          <td>
+            <div>{{ row.skill_type|default:"-" }}</div>
+            {% if row.tier %}<div class="audit-meta">{{ row.tier }}</div>{% endif %}
+          </td>
+          <td>{{ row.source|default:"-" }}</td>
+          <td style="text-align:right;">
+            <form method="post" action="{% url 'module-skill-delete' row.module.pk %}" onsubmit="return confirm('Remove {{ row.skill|escapejs }} from {{ row.module.name|escapejs }}?')">
+              {% csrf_token %}
+              <input type="hidden" name="skill" value="{{ row.skill }}">
+              <input type="hidden" name="next" value="audit">
+              <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="padding:34px;text-align:center;color:var(--muted);">
+    No extracted course skills found yet.
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

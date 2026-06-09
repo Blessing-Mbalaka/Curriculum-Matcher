@@ -92,8 +92,32 @@ ADZUNA_APP_ID = os.environ.get("ADZUNA_APP_ID", "")
 ADZUNA_APP_KEY = os.environ.get("ADZUNA_APP_KEY", "")
 ADZUNA_COUNTRY = os.environ.get("ADZUNA_COUNTRY", "za")
 
+# Gemini API (optional)
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_CLEANING_ENABLED = os.environ.get("GEMINI_CLEANING_ENABLED", "False") == "True"
+GEMINI_PROMPT_MAX_CHARS = int(os.environ.get("GEMINI_PROMPT_MAX_CHARS", "24000"))
 
-
-
-
-
+SPACY_MODEL_NAME = os.environ.get("SPACY_MODEL_NAME", "en_core_web_sm")
+COURSE_SKILL_NER_MODEL_PATH = os.environ.get(
+    "COURSE_SKILL_NER_MODEL_PATH",
+    str(BASE_DIR / "models" / "course_skill_ner"),
+)
+BERT_SKILL_NER_MODEL_PATH = os.environ.get(
+    "BERT_SKILL_NER_MODEL_PATH",
+    str(BASE_DIR / "models" / "bert_skill_ner"),
+)
+BERT_SKILL_NER_ENABLED = os.environ.get("BERT_SKILL_NER_ENABLED", "True") == "True"
+BERT_SKILL_NER_MIN_CONFIDENCE = float(os.environ.get("BERT_SKILL_NER_MIN_CONFIDENCE", "0.65"))
+SKILL_REGEX_FALLBACK_ENABLED = os.environ.get("SKILL_REGEX_FALLBACK_ENABLED", "False") == "True"
+SKILL_NOUN_CHUNK_MINING_ENABLED = os.environ.get("SKILL_NOUN_CHUNK_MINING_ENABLED", "False") == "True"
+AUTO_TRAIN_COURSE_SKILL_NER = os.environ.get("AUTO_TRAIN_COURSE_SKILL_NER", "True") == "True"
+COURSE_SKILL_NER_AUTO_EPOCHS = int(os.environ.get("COURSE_SKILL_NER_AUTO_EPOCHS", "8"))
+COURSE_SKILL_NER_MIN_EXAMPLES = int(os.environ.get("COURSE_SKILL_NER_MIN_EXAMPLES", "5"))
+SEMANTIC_SCORE_WEIGHT = float(os.environ.get("SEMANTIC_SCORE_WEIGHT", "0.55"))
+SKILL_SCORE_WEIGHT = float(os.environ.get("SKILL_SCORE_WEIGHT", "0.20"))
+CONFIDENCE_SCORE_WEIGHT = float(os.environ.get("CONFIDENCE_SCORE_WEIGHT", "0.15"))
+DECISION_TREE_SCORE_WEIGHT = float(os.environ.get("DECISION_TREE_SCORE_WEIGHT", "0.10"))
+TOP_MODULE_MATCH_COUNT = int(os.environ.get("TOP_MODULE_MATCH_COUNT", "3"))
+SEMANTIC_EMBED_CHUNK_CHARS = int(os.environ.get("SEMANTIC_EMBED_CHUNK_CHARS", "3500"))
+SEMANTIC_EMBED_MAX_CHUNKS = int(os.environ.get("SEMANTIC_EMBED_MAX_CHUNKS", "12"))

@@ -20,6 +20,15 @@
 .run-pill:hover { border-color:var(--olive); color:var(--olive); }
 .run-pill.active { background:var(--ink); color:#fff; border-color:var(--ink); }
 .run-pill.error { border-color:var(--rust); color:var(--rust); }
+.run-selector-card {
+  display:grid;
+  grid-template-columns:minmax(220px,1fr) auto auto;
+  gap:10px;
+  align-items:end;
+  margin-bottom:14px;
+}
+.run-selector-title { font-weight:800; margin-bottom:4px; }
+.run-selector-copy { color:var(--muted); font-size:12px; }
 .queue-progress { display:none; margin-bottom:24px; padding:18px 20px; border:1px solid var(--rule); border-radius:8px; background:linear-gradient(135deg, #fff, var(--uj-orange-soft)); }
 .queue-progress.active { display:block; }
 .queue-progress-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:12px; }
@@ -131,7 +140,7 @@
 .mini-skill-help code { font-family:var(--mono); font-size:11px; color:#9a4a08; }
 .detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
 .detail-panel.open { display:table-row; }
-@media (max-width:1000px) { .results-visuals, .results-filters, .heatmap-controls { grid-template-columns:1fr; } }
+@media (max-width:1000px) { .results-visuals, .results-filters, .heatmap-controls, .run-selector-card { grid-template-columns:1fr; } }
 @media (max-width:640px) { .mini-skill-row { grid-template-columns:1fr; } .mini-skill-counts { grid-column:auto; } .mini-skill-meta { text-align:left; } }
 </style>
 {% endblock %}
@@ -150,6 +159,20 @@
 </div>
 
 {% if runs %}
+<form method="get" class="card run-selector-card">
+  <div>
+    <div class="run-selector-title">Historic Analysis Runs</div>
+    <div class="run-selector-copy">Select any saved run to revisit its scores, charts, recommendations, and visual CSV export.</div>
+  </div>
+  <select class="form-control" name="run" aria-label="Select historic analysis run">
+    {% for run in runs %}
+    <option value="{{ run.id }}" {% if selected_run and selected_run.id == run.id %}selected{% endif %}>
+      {{ run.name }} - {{ run.status|upper }} - {{ run.created_at|date:"d M Y H:i" }}
+    </option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-primary" type="submit">View Run</button>
+</form>
 <div class="run-pills">
   {% for run in runs %}
   <a href="?run={{ run.id }}" class="run-pill {% if selected_run and selected_run.id == run.id %}active{% endif %} {% if run.status == 'error' %}error{% endif %}">
