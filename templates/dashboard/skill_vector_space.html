@@ -77,11 +77,63 @@
 }
 .vector-panel-title { color:#fff; font-weight:800; font-size:13px; margin-bottom:4px; }
 .vector-panel-meta { font-size:12px; line-height:1.45; }
+.vector-legend {
+  position:absolute;
+  right:16px;
+  bottom:16px;
+  z-index:2;
+  width:min(250px, calc(100% - 32px));
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:8px;
+  background:rgba(7,7,7,.76);
+  color:rgba(255,255,255,.78);
+  padding:12px;
+  backdrop-filter:blur(10px);
+}
+.vector-legend-title {
+  color:#fff;
+  font-weight:800;
+  font-size:13px;
+  margin-bottom:8px;
+}
+.vector-legend-grid {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:7px;
+}
+.vector-legend-item {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+}
+.vector-legend-swatch {
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.48);
+  flex:0 0 auto;
+}
+.vector-legend-line {
+  width:18px;
+  height:3px;
+  border-radius:999px;
+  flex:0 0 auto;
+}
 @media (max-width:760px) {
   .vector-shell { height:calc(100vh - 49px); }
   .vector-toolbar { align-items:flex-start; flex-direction:column; }
   .vector-actions { width:100%; }
   .vector-search, .vector-filter { width:100%; }
+  .vector-panel,
+  .vector-legend {
+    position:relative;
+    left:auto;
+    right:auto;
+    bottom:auto;
+    width:auto;
+    margin:12px;
+  }
 }
 </style>
 {% endblock %}
@@ -128,6 +180,8 @@
       <input class="vector-search" id="vectorSearch" type="search" placeholder="Find a skill, job, or course">
       <button class="btn btn-on-dark btn-sm" id="vectorSearchBtn" type="button">Focus</button>
       <button class="btn btn-on-dark btn-sm" id="clearVectorFiltersBtn" type="button">Clear</button>
+      <button class="btn btn-on-dark btn-sm" id="downloadVectorJsonBtn" type="button">Download JSON</button>
+      <button class="btn btn-on-dark btn-sm" id="downloadVectorCsvBtn" type="button">Download CSV</button>
       <span class="vector-stat" id="vectorNodeCount">0 nodes</span>
       <span class="vector-stat" id="vectorEdgeCount">0 strands</span>
       <button class="btn btn-on-dark btn-sm" id="fitVectorBtn" type="button">Fit view</button>
@@ -145,6 +199,19 @@
     <div class="vector-panel" id="vectorPanel">
       <div class="vector-panel-title">Select a node or strand</div>
       <div class="vector-panel-meta">Root jobs and root courses are connected to the actual skills extracted by NLP and NER. Skill-to-skill strands show cosine-style semantic association.</div>
+    </div>
+    <div class="vector-legend" aria-label="Vector space legend">
+      <div class="vector-legend-title">Legend</div>
+      <div class="vector-legend-grid">
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#f58220;"></span>Job root</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#7bd88f;"></span>Course root</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#2f80ed;"></span>Technical skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#39a96b;"></span>Soft skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#ffb703;"></span>Business skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#9aa0a6;"></span>Other skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-line" style="background:rgba(123,216,143,.72);"></span>Evidence strand</div>
+        <div class="vector-legend-item"><span class="vector-legend-line" style="background:rgba(245,130,32,.88);"></span>Similarity strand</div>
+      </div>
     </div>
   </div>
 </div>
@@ -165,6 +232,8 @@ const pauseVectorBtn = document.getElementById('pauseVectorBtn');
 const vectorSearch = document.getElementById('vectorSearch');
 const vectorSearchBtn = document.getElementById('vectorSearchBtn');
 const clearVectorFiltersBtn = document.getElementById('clearVectorFiltersBtn');
+const downloadVectorJsonBtn = document.getElementById('downloadVectorJsonBtn');
+const downloadVectorCsvBtn = document.getElementById('downloadVectorCsvBtn');
 const vectorFilterControls = {
   source: document.getElementById('vectorSourceFilter'),
   skill: document.getElementById('vectorSkillFilter'),
@@ -182,6 +251,69 @@ let selectedLinkKey = null;
 let currentGraphData = { nodes:[], links:[] };
 let rawVectorData = null;
 
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportableGraphData() {
+  return {
+    exported_at: new Date().toISOString(),
+    filters: selectedVectorFilters(),
+    counts: {
+      nodes: currentGraphData.nodes.length,
+      links: currentGraphData.links.length,
+    },
+    nodes: currentGraphData.nodes.map(node => ({ ...node })),
+    links: currentGraphData.links.map(link => ({
+      ...link,
+      source: linkEndpointId(link.source),
+      target: linkEndpointId(link.target),
+    })),
+  };
+}
+
+function csvValue(value) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportGraphCsv() {
+  const graph = exportableGraphData();
+  const rows = [[
+    'record_type', 'id', 'source', 'target', 'label', 'full_label', 'group',
+    'value', 'similarity_percent', 'skill', 'skill_type', 'sector',
+    'source_type', 'course_code', 'course_name', 'parent_label', 'description',
+  ]];
+  graph.nodes.forEach(node => {
+    rows.push([
+      'node', node.id, '', '', node.label, node.full_label || '', node.group,
+      '', '', node.skill || '', node.skill_type || '', node.sector || '',
+      node.source_type || '', node.course_code || '', node.course_name || '',
+      node.parent_label || '', node.description || '',
+    ]);
+  });
+  graph.links.forEach(link => {
+    rows.push([
+      'link', '', link.source, link.target, link.label || '', link.title || '',
+      link.group || '', link.value || '', link.similarity || '', '', '', '',
+      '', '', '', '', '',
+    ]);
+  });
+  return rows.map(row => row.map(csvValue).join(',')).join('\n');
+}
+
+function timestampForFilename() {
+  return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
 function nodeColor(node) {
   if (node.id === selectedNodeId) return '#ffffff';
   if (node.group === 'job-root') return '#f58220';
@@ -195,7 +327,12 @@ function nodeColor(node) {
 function nodeLabel(node) {
   const description = node.description ? `\n${node.description.slice(0, 160)}` : '';
   if (node.group === 'job-root') return `Root job: ${node.full_label || node.label}\nSector: ${node.sector || 'Unclassified'}${description}`;
-  if (node.group === 'course-root') return `Root course/module: ${node.full_label || node.label}\nCourse: ${node.parent_label || 'Course evidence'}${description}`;
+  if (node.group === 'course-root') {
+    const courseName = node.course_name || node.full_label || node.label;
+    const courseCode = node.course_code ? `${node.course_code}: ` : '';
+    const school = node.parent_label ? `\nSchool: ${node.parent_label}` : '';
+    return `Course root: ${courseCode}${courseName}${school}\nSource: Course/module skill evidence${description}`;
+  }
   return `Skill: ${node.full_label || node.label}\nType: ${node.skill_type || 'domain'}\nSector: ${node.sector || 'Unclassified'}`;
 }
 
@@ -236,8 +373,11 @@ function focusNode(node) {
   vectorPanel.innerHTML = `
     <div class="vector-panel-title">${node.group === 'skill' ? 'Skill node' : node.group === 'job-root' ? 'Root job' : 'Root course'}</div>
     <div class="vector-panel-meta"><strong>${node.full_label || node.label}</strong><br>
+      ${node.group === 'course-root' && node.course_code ? `Course code: ${node.course_code}<br>` : ''}
+      ${node.group === 'course-root' && node.course_name ? `Course name: ${node.course_name}<br>` : ''}
       ${node.skill_type ? `Type: ${node.skill_type}<br>` : ''}
       ${node.sector ? `Sector: ${node.sector}<br>` : ''}
+      ${node.group === 'course-root' && node.parent_label ? `School: ${node.parent_label}<br>` : ''}
       ${node.source ? `Extractor: ${node.source}<br>` : ''}
       ${node.confidence ? `Confidence: ${Math.round(Number(node.confidence) * 100)}%` : 'Linked evidence is shown as strands.'}
       ${node.description ? `<br><br>${node.description.slice(0, 220)}` : ''}
@@ -510,6 +650,20 @@ clearVectorFiltersBtn.addEventListener('click', () => {
   });
   vectorSearch.value = '';
   applyVectorFilters();
+});
+downloadVectorJsonBtn.addEventListener('click', () => {
+  downloadBlob(
+    `skill-vector-space-${timestampForFilename()}.json`,
+    JSON.stringify(exportableGraphData(), null, 2),
+    'application/json'
+  );
+});
+downloadVectorCsvBtn.addEventListener('click', () => {
+  downloadBlob(
+    `skill-vector-space-${timestampForFilename()}.csv`,
+    exportGraphCsv(),
+    'text/csv;charset=utf-8'
+  );
 });
 vectorSearchBtn.addEventListener('click', focusSearchResult);
 vectorSearch.addEventListener('keydown', event => {

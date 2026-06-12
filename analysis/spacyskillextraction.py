@@ -62,7 +62,7 @@ SOFT_CONTEXT_TERMS = {
 
 TECHNICAL_SKILL_TERMS = {
     "ai", "algorithm", "algorithms", "analytics", "api", "architecture", "automation",
-    "azure", "aws", "bi", "c#", "c++", "cloud", "code", "coding", "css", "dashboard", "data",
+    "azure", "aws", "bi", "cloud", "code", "coding", "css", "dashboard", "data",
     "database", "databases", "devops", "django", "engineering", "excel", "flask",
     "gcp", "html", "java", "javascript", "kubernetes", "machine", "model",
     "modelling", "modeling", "power", "programming", "python", "r", "reporting",
@@ -156,6 +156,8 @@ class SpacySkillExtractor:
         self._load_spacy()
         self._bert_ner = None
         self._bert_backend = None
+        #minimum confidence threshold for accepting BERT NER predictions.
+        #we saying we want only confidence of 0.65 or higher to be accepted, but this can be adjusted based on the desired precision/recall balance.
         self._bert_min_confidence = float(getattr(settings, "BERT_SKILL_NER_MIN_CONFIDENCE", 0.65))
         self._regex_fallback_enabled = bool(getattr(settings, "SKILL_REGEX_FALLBACK_ENABLED", False))
         self._noun_chunk_mining_enabled = bool(getattr(settings, "SKILL_NOUN_CHUNK_MINING_ENABLED", False))

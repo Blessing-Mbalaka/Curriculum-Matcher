@@ -3,11 +3,14 @@ import csv
 from datetime import timedelta
 import hashlib
 from io import BytesIO
+import json
 from pathlib import Path
 import re
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from django.db import IntegrityError
 from django.db.models import Avg
 from django.utils import timezone
@@ -24,6 +27,12 @@ from jobs.ingestion import extract_advert_metadata, extract_advert_sections, par
 from analysis.models import AnalysisRun, GapResult, SkillMatrix, TaskRecord
 from analysis.course_skill_ner import collect_training_examples
 from analysis.nlp_pipeline import BUSINESS_SKILL_EXCLUDED_TERMS
+from analysis.rag_chatbot import (
+    ask_rag_question,
+    load_or_build_knowledge_index,
+    normalise_scope,
+    scoped_knowledge_chunks,
+)
 from analysis.spacyskillextraction import classify_skill_text
 # Plain functions now — no .delay(), no Celery
 from analysis.tasks import (
@@ -736,6 +745,38 @@ class SkillVectorSpaceView(TemplateView):
             "back_url": f"{reverse('data-export')}?{query_string}" if query_string else reverse("data-export"),
         })
         return ctx
+
+
+@method_decorator(ensure_csrf_cookie, name="dispatch")
+class RagChatbotView(TemplateView):
+    template_name = "dashboard/rag_chatbot.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        scope = normalise_scope(self.request.GET.get("scope", "all"))
+        knowledge = load_or_build_knowledge_index(refresh=self.request.GET.get("refresh") == "1")
+        scoped_chunks = scoped_knowledge_chunks(knowledge["chunks"], scope)
+        ctx.update({
+            "knowledge_chunk_count": len(scoped_chunks),
+            "knowledge_fingerprint": knowledge["fingerprint"],
+            "knowledge_scope": scope,
+            "tinyllama_model": getattr(settings, "TINYLLAMA_MODEL", "tinyllama"),
+            "tinyllama_endpoint": getattr(settings, "TINYLLAMA_ENDPOINT", "http://127.0.0.1:11434/api/generate"),
+        })
+        return ctx
+
+
+class RagChatbotApiView(View):
+    def post(self, request):
+        try:
+            payload = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON payload."}, status=400)
+        question = (payload.get("question") or "").strip()
+        refresh = bool(payload.get("refresh"))
+        scope = normalise_scope(payload.get("scope", "all"))
+        response = ask_rag_question(question, refresh=refresh, scope=scope)
+        return JsonResponse(response)
 
 
 class SkillEntityUpdateView(View):
@@ -2120,7 +2161,7 @@ def similarity_network(request):
 
 
 def build_skill_vector_space_payload(request):
-    rows = filtered_skill_entity_rows(request)[:900]
+    rows = balanced_skill_vector_rows(filtered_skill_entity_rows(request), request, limit=900)
     job_lookup = JobAdvert.objects.in_bulk({
         row["source_id"] for row in rows if row["source_type"] == "job"
     })
@@ -2135,20 +2176,39 @@ def build_skill_vector_space_payload(request):
         nodes.setdefault(node_id, {"id": node_id}).update(attrs)
 
     for row in rows:
-        root_id = f"{row['source_type']}-{row['source_id']}"
-        root_group = "job-root" if row["source_type"] == "job" else "course-root"
-        root_label = row["job_title"] if row["source_type"] == "job" and row["job_title"] else row["source_label"]
         source_obj = job_lookup.get(row["source_id"]) if row["source_type"] == "job" else module_lookup.get(row["source_id"])
-        description = getattr(source_obj, "description", "") or getattr(source_obj, "content", "") or ""
+        if row["source_type"] == "job":
+            root_id = f"job-{row['source_id']}"
+            root_group = "job-root"
+            root_label = row["job_title"] or row["source_label"]
+            parent_label = row["parent_label"]
+            description = getattr(source_obj, "description", "") or ""
+        else:
+            course = getattr(source_obj, "course", None)
+            root_id = f"course-{course.id}" if course else f"module-{row['source_id']}"
+            root_group = "course-root"
+            root_label = (
+                f"{course.code}: {course.name}" if course and course.code else
+                course.name if course else
+                row["parent_label"] or row["source_label"]
+            )
+            parent_label = course.university_name if course else row["parent_label"]
+            course_description = getattr(course, "description", "") if course else ""
+            module_content = getattr(source_obj, "content", "") or ""
+            description = course_description or module_content
+            course_code = course.code if course else ""
+            course_name = course.name if course else root_label
         add_node(
             root_id,
             label=root_label[:54],
             full_label=root_label,
             group=root_group,
-            source_type=row["source_type"],
+            source_type="job" if row["source_type"] == "job" else "course",
             sector=row["sector"],
-            parent_label=row["parent_label"],
+            parent_label=parent_label,
             description=description[:420],
+            course_code=course_code if row["source_type"] == "module" else "",
+            course_name=course_name if row["source_type"] == "module" else "",
         )
 
         skill_id = row["id"]
@@ -2214,6 +2274,28 @@ def build_skill_vector_space_payload(request):
             "roots": len([node for node in nodes.values() if node.get("group") != "skill"]),
         },
     }
+
+
+def balanced_skill_vector_rows(rows, request, limit=900):
+    if len(rows) <= limit:
+        return rows
+
+    source_filter = request.GET.get("source", "")
+    if source_filter:
+        return rows[:limit]
+
+    job_rows = [row for row in rows if row["source_type"] == "job"]
+    module_rows = [row for row in rows if row["source_type"] == "module"]
+    if not job_rows or not module_rows:
+        return rows[:limit]
+
+    half = limit // 2
+    selected = job_rows[:half] + module_rows[:half]
+    if len(selected) < limit:
+        used = len(selected)
+        remainder = job_rows[half:] + module_rows[half:]
+        selected.extend(remainder[:limit - used])
+    return selected
 
 
 class SkillVectorSpaceCsvExportView(View):

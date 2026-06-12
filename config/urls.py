@@ -15,6 +15,7 @@ from dashboard.views import (
     SkillEntityCsvExportView, CourseSkillTrainingCsvExportView,
     CleanedSkillCsvDownloadView, JobCsvExportView, DataExportVisualCsvExportView,
     SkillVectorSpaceView, SkillVectorSpaceCsvExportView,
+    RagChatbotView, RagChatbotApiView,
     DashboardVisualCsvExportView, AnalysisVisualCsvExportView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
     skill_vector_space, course_skill_training_readiness,
@@ -68,6 +69,8 @@ urlpatterns = [
     path("data-export/vector-space.csv", SkillVectorSpaceCsvExportView.as_view(), name="skill-vector-space-export"),
     path("analysis/results/visuals.csv", AnalysisVisualCsvExportView.as_view(), name="analysis-visual-export"),
     path("data-export/entity/update/", SkillEntityUpdateView.as_view(), name="skill-entity-update"),
+    path("rag-chatbot/", RagChatbotView.as_view(), name="rag-chatbot"),
+    path("api/rag-chatbot/", RagChatbotApiView.as_view(), name="rag-chatbot-api"),
     path("methodology/", MethodologyView.as_view(), name="methodology"),
 
     # Tasks

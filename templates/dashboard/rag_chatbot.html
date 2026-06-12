@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+
+{% block title %}RAG Chatbot - CurriculumMatch{% endblock %}
+{% block page_title %}RAG Chatbot{% endblock %}
+
+{% block extra_css %}
+<style>
+.rag-shell {
+  display:grid;
+  grid-template-columns:minmax(0, 1.4fr) minmax(340px, .8fr);
+  gap:20px;
+  align-items:start;
+}
+.rag-panel {
+  background:#fff;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  box-shadow:0 18px 45px rgba(11,11,11,.045);
+}
+.rag-chat {
+  min-height:620px;
+  display:flex;
+  flex-direction:column;
+}
+.rag-meta {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+  margin-bottom:18px;
+}
+.rag-meta-item {
+  border:1px solid var(--rule);
+  background:#fff;
+  border-radius:8px;
+  padding:14px;
+}
+.rag-meta-label {
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.1em;
+  text-transform:uppercase;
+  color:#9a4a08;
+}
+.rag-meta-value {
+  margin-top:4px;
+  font-weight:700;
+  color:var(--ink);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.rag-messages {
+  flex:1;
+  padding:22px;
+  overflow:auto;
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+.rag-message {
+  max-width:82%;
+  padding:13px 15px;
+  border-radius:8px;
+  line-height:1.55;
+  border:1px solid var(--rule);
+  white-space:pre-wrap;
+}
+.rag-message-user {
+  align-self:flex-end;
+  background:#111;
+  color:#fff;
+  border-color:#111;
+}
+.rag-message-bot {
+  align-self:flex-start;
+  background:var(--uj-orange-soft);
+  color:#15110d;
+  border-color:#ffbd80;
+}
+.rag-message-system {
+  align-self:center;
+  max-width:100%;
+  background:#f6f2ec;
+  color:var(--muted);
+  font-size:12px;
+}
+.rag-form {
+  border-top:1px solid var(--rule);
+  padding:16px;
+  display:grid;
+  grid-template-columns:auto minmax(0, 1fr) auto auto;
+  gap:10px;
+  align-items:end;
+}
+.rag-form textarea {
+  min-height:48px;
+  max-height:140px;
+}
+.rag-scope {
+  display:flex;
+  background:var(--soft);
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:4px;
+  gap:3px;
+}
+.rag-scope input {
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+.rag-scope label {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:72px;
+  height:40px;
+  padding:0 12px;
+  border-radius:6px;
+  font-size:12px;
+  font-weight:700;
+  color:var(--muted);
+  cursor:pointer;
+  white-space:nowrap;
+}
+.rag-scope input:checked + label {
+  background:#111;
+  color:#fff;
+  box-shadow:0 1px 3px rgba(0,0,0,.1);
+}
+.rag-side {
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.rag-side-section {
+  padding:18px;
+}
+.rag-side-title {
+  font-family:var(--syne);
+  font-weight:700;
+  font-size:15px;
+  margin-bottom:12px;
+}
+.rag-chart-wrap {
+  height:270px;
+  position:relative;
+}
+.rag-citations {
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+}
+.rag-citation {
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:10px;
+  background:#fffaf5;
+}
+.rag-citation-title {
+  font-weight:700;
+  font-size:12px;
+}
+.rag-citation-id {
+  font-family:var(--mono);
+  color:#9a4a08;
+  font-size:10px;
+  margin-top:2px;
+}
+.rag-citation-quote {
+  margin-top:7px;
+  color:var(--muted);
+  font-size:12px;
+}
+.rag-table {
+  width:100%;
+  font-size:12px;
+}
+.rag-table td,
+.rag-table th {
+  padding:8px 9px;
+}
+.rag-json {
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:#111;
+  color:#fff;
+  border-radius:8px;
+  padding:14px;
+  max-height:280px;
+  overflow:auto;
+  font-family:var(--mono);
+  font-size:11px;
+}
+.rag-status {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:var(--muted);
+  font-size:12px;
+}
+.rag-status-dot {
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:#236b35;
+}
+.rag-status-dot.is-busy {
+  background:var(--uj-orange);
+}
+@media (max-width:1100px) {
+  .rag-shell { grid-template-columns:1fr; }
+  .rag-meta { grid-template-columns:1fr; }
+  .rag-message { max-width:100%; }
+  .rag-form { grid-template-columns:1fr; }
+  .rag-scope { width:100%; }
+  .rag-scope label { flex:1; min-width:0; }
+}
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn btn-outline btn-sm" href="?refresh=1&scope={{ knowledge_scope }}">Refresh Knowledge</a>
+{% endblock %}
+
+{% block content %}
+<div class="rag-meta">
+  <div class="rag-meta-item">
+    <div class="rag-meta-label">Knowledge Chunks</div>
+    <div class="rag-meta-value">{{ knowledge_chunk_count }}</div>
+  </div>
+  <div class="rag-meta-item">
+    <div class="rag-meta-label">TinyLlama</div>
+    <div class="rag-meta-value" title="{{ tinyllama_endpoint }}">{{ tinyllama_model }}</div>
+  </div>
+  <div class="rag-meta-item">
+    <div class="rag-meta-label">Active Scope</div>
+    <div class="rag-meta-value">{{ knowledge_scope|title }} / {{ knowledge_fingerprint }}</div>
+  </div>
+</div>
+
+<div class="rag-shell">
+  <section class="rag-panel rag-chat" aria-label="RAG chatbot">
+    <div class="rag-messages" id="ragMessages">
+      <div class="rag-message rag-message-system">
+        Ask about stored courses, job adverts, extracted skills, or gap analysis. Answers are restricted to the Markdown knowledge cache and cited evidence.
+      </div>
+    </div>
+    <form class="rag-form" id="ragForm">
+      <div class="rag-scope" aria-label="Knowledge scope">
+        <input id="ragScopeAll" type="radio" name="scope" value="all" {% if knowledge_scope == "all" %}checked{% endif %}>
+        <label for="ragScopeAll">Both</label>
+        <input id="ragScopeJobs" type="radio" name="scope" value="jobs" {% if knowledge_scope == "jobs" %}checked{% endif %}>
+        <label for="ragScopeJobs">Jobs</label>
+        <input id="ragScopeCourses" type="radio" name="scope" value="courses" {% if knowledge_scope == "courses" %}checked{% endif %}>
+        <label for="ragScopeCourses">Courses</label>
+      </div>
+      <textarea class="form-control" id="ragQuestion" name="question" placeholder="Ask a grounded question..." required></textarea>
+      <button class="btn btn-outline" id="ragRefresh" type="button">Refresh</button>
+      <button class="btn btn-primary" id="ragAsk" type="submit">Ask</button>
+    </form>
+  </section>
+
+  <aside class="rag-side">
+    <section class="rag-panel rag-side-section">
+      <div class="section-hd">
+        <h2>Visualisation</h2>
+        <div class="rag-status"><span class="rag-status-dot" id="ragStatusDot"></span><span id="ragStatus">Ready</span></div>
+      </div>
+      <div class="rag-chart-wrap">
+        <canvas id="ragChart"></canvas>
+      </div>
+    </section>
+
+    <section class="rag-panel rag-side-section">
+      <div class="rag-side-title">Citations</div>
+      <div class="rag-citations" id="ragCitations"></div>
+    </section>
+
+    <section class="rag-panel rag-side-section">
+      <div class="rag-side-title">Structured Table</div>
+      <div class="table-wrap">
+        <table class="rag-table" id="ragTable"></table>
+      </div>
+    </section>
+
+    <section class="rag-panel rag-side-section">
+      <div class="rag-side-title">Schema Response</div>
+      <pre class="rag-json" id="ragJson">{}</pre>
+    </section>
+  </aside>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  const apiUrl = "{% url 'rag-chatbot-api' %}";
+  const form = document.getElementById('ragForm');
+  const question = document.getElementById('ragQuestion');
+  const refreshBtn = document.getElementById('ragRefresh');
+  const scopeInputs = Array.from(document.querySelectorAll('input[name="scope"]'));
+  const messages = document.getElementById('ragMessages');
+  const citations = document.getElementById('ragCitations');
+  const table = document.getElementById('ragTable');
+  const rawJson = document.getElementById('ragJson');
+  const statusText = document.getElementById('ragStatus');
+  const statusDot = document.getElementById('ragStatusDot');
+  let chart = null;
+
+  function csrfToken() {
+    const match = document.cookie.match(/(?:^|; )csrftoken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  function setBusy(isBusy, label) {
+    statusText.textContent = label || (isBusy ? 'Thinking' : 'Ready');
+    statusDot.classList.toggle('is-busy', isBusy);
+    form.querySelectorAll('button, textarea').forEach(el => el.disabled = isBusy);
+    scopeInputs.forEach(el => el.disabled = isBusy);
+  }
+
+  function selectedScope() {
+    return scopeInputs.find(input => input.checked)?.value || 'all';
+  }
+
+  function addMessage(text, type) {
+    const item = document.createElement('div');
+    item.className = `rag-message rag-message-${type}`;
+    item.textContent = text;
+    messages.appendChild(item);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function renderChart(payload) {
+    const ctx = document.getElementById('ragChart');
+    if (!ctx || typeof Chart === 'undefined') return;
+    if (chart) chart.destroy();
+    const chartData = payload.chart || {};
+    chart = new Chart(ctx, {
+      type: chartData.type || 'bar',
+      data: {
+        labels: chartData.labels || [],
+        datasets: (chartData.datasets || []).map((dataset, index) => ({
+          label: dataset.label || `Metric ${index + 1}`,
+          data: dataset.data || [],
+          backgroundColor: index === 0 ? 'rgba(245,130,32,.72)' : 'rgba(41,56,74,.64)',
+          borderColor: index === 0 ? '#b95400' : '#29384a',
+          borderWidth: 1.5,
+          tension: .3,
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom' },
+          title: { display: true, text: chartData.title || 'Knowledge evidence' },
+        },
+        scales: chartData.type === 'doughnut' ? {} : {
+          x: { ticks: { maxRotation: 35, minRotation: 0 } },
+          y: { beginAtZero: true },
+        },
+      },
+    });
+  }
+
+  function renderCitations(items) {
+    citations.innerHTML = '';
+    (items || []).forEach(item => {
+      const node = document.createElement('div');
+      node.className = 'rag-citation';
+      node.innerHTML = '<div class="rag-citation-title"></div><div class="rag-citation-id"></div><div class="rag-citation-quote"></div>';
+      node.querySelector('.rag-citation-title').textContent = item.title || 'Evidence';
+      node.querySelector('.rag-citation-id').textContent = item.id || '';
+      node.querySelector('.rag-citation-quote').textContent = item.quote || '';
+      citations.appendChild(node);
+    });
+  }
+
+  function renderTable(value) {
+    const columns = value?.columns || [];
+    const rows = value?.rows || [];
+    table.innerHTML = '';
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    columns.forEach(column => {
+      const th = document.createElement('th');
+      th.textContent = column;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+    const tbody = document.createElement('tbody');
+    rows.forEach(row => {
+      const tr = document.createElement('tr');
+      row.forEach(cell => {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+  }
+
+  function renderResponse(payload) {
+    addMessage(payload.answer || 'No answer returned.', 'bot');
+    renderChart(payload);
+    renderCitations(payload.citations || []);
+    renderTable(payload.table || {});
+    rawJson.textContent = JSON.stringify(payload, null, 2);
+    setBusy(false, payload.cache?.hit ? 'Cached' : 'Ready');
+  }
+
+  async function ask(refresh) {
+    const text = question.value.trim();
+    const scope = selectedScope();
+    if (!text) return;
+    addMessage(`[${scope === 'all' ? 'both' : scope}] ${text}`, 'user');
+    setBusy(true, refresh ? 'Refreshing knowledge' : 'Thinking');
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken(),
+        },
+        body: JSON.stringify({ question: text, refresh, scope }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Request failed');
+      renderResponse(payload);
+    } catch (error) {
+      addMessage(error.message || 'The chatbot request failed.', 'system');
+      setBusy(false, 'Error');
+    }
+  }
+
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    ask(false);
+  });
+  refreshBtn.addEventListener('click', () => ask(true));
+  scopeInputs.forEach(input => {
+    input.addEventListener('change', () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('scope', selectedScope());
+      window.history.replaceState({}, '', url.toString());
+    });
+  });
+})();
+</script>
+{% endblock %}
