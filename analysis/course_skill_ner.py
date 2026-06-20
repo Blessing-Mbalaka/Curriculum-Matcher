@@ -7,6 +7,7 @@ from pathlib import Path
 from django.conf import settings
 
 from courses.models import Module
+from jobs.models import JobAdvert
 
 
 def normalize_skill(value):
@@ -25,22 +26,53 @@ def find_skill_offsets(text, skill):
 
 
 def collect_training_examples(reviewed_only=False):
+    return collect_skill_ner_training_examples(reviewed_only=reviewed_only, include_jobs=False)
+
+
+def collect_skill_ner_training_examples(reviewed_only=False, include_jobs=True):
     examples = []
     skipped = 0
     modules = Module.objects.select_related("course").order_by("course__code", "order", "name", "id")
     for module in modules:
-        text = module.content or ""
+        added, missed = collect_examples_from_document(
+            module.content or "",
+            module.skill_entities or [],
+            module.skills_extracted or [],
+            reviewed_only=reviewed_only,
+        )
+        examples.extend(added)
+        skipped += missed
+    if include_jobs:
+        jobs = JobAdvert.objects.order_by("title", "id")
+        for job in jobs:
+            added, missed = collect_examples_from_document(
+                job.analysis_text(),
+                job.skill_entities or [],
+                job.skills_extracted or [],
+                reviewed_only=reviewed_only,
+            )
+            examples.extend(added)
+            skipped += missed
+    return examples, skipped
+
+
+def collect_examples_from_document(text, raw_entities, fallback_skills, reviewed_only=False):
+    examples = []
+    skipped = 0
+    if text:
         entities = []
         seen_spans = set()
-        raw_entities = list(module.skill_entities or [])
+        raw_entities = list(raw_entities or [])
         if not raw_entities:
             raw_entities = [
                 {"skill": skill, "label": "SKILL", "label_status": "legacy"}
-                for skill in (module.skills_extracted or [])
+                for skill in (fallback_skills or [])
             ]
         candidate_entities = []
         for entity in raw_entities:
             if not isinstance(entity, dict):
+                continue
+            if entity.get("label_status") == "candidate":
                 continue
             if reviewed_only and entity.get("label_status") != "reviewed":
                 continue

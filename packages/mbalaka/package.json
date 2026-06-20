@@ -1,0 +1,50 @@
+{
+  "name": "mbalaka",
+  "version": "0.1.0",
+  "description": "Reusable 3D semantic skill vector-space visualization for jobs, courses, and extracted skills.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "examples",
+    "original",
+    "README.md",
+    "PUBLISHING.md",
+    "SOURCE.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "./dist/styles.css"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build"
+  },
+  "keywords": [
+    "skills",
+    "vector-space",
+    "3d-force-graph",
+    "semantic-search",
+    "curriculum",
+    "jobs",
+    "visualization"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "3d-force-graph": "^1.73.3",
+    "three-spritetext": "^1.9.0"
+  },
+  "peerDependencies": {
+    "three": ">=0.160.0"
+  },
+  "devDependencies": {}
+}

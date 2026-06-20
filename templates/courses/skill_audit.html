@@ -59,6 +59,67 @@
   color:var(--muted);
   font-size:12px;
 }
+.audit-context {
+  max-width:620px;
+  color:var(--ink);
+  line-height:1.55;
+  white-space:pre-wrap;
+}
+.audit-evidence-text {
+  font-weight:700;
+  margin-bottom:6px;
+}
+.audit-context-toggle {
+  margin-top:8px;
+}
+.audit-context-toggle summary {
+  cursor:pointer;
+  color:var(--uj-orange);
+  font-weight:700;
+  font-size:12px;
+}
+.audit-review-form {
+  display:grid;
+  gap:8px;
+  min-width:270px;
+}
+.audit-review-grid {
+  display:grid;
+  grid-template-columns:minmax(110px, 1fr) minmax(90px, .75fr);
+  gap:6px;
+}
+.skill-type-toggle {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:5px;
+}
+.skill-type-toggle input {
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+.skill-type-toggle span {
+  display:block;
+  text-align:center;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:7px 6px;
+  background:#fff;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:800;
+}
+.skill-type-toggle input:checked + span {
+  border-color:var(--ink);
+  background:var(--ink);
+  color:#fff;
+}
+.audit-actions {
+  display:flex;
+  gap:6px;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+}
 @media (max-width:800px) {
   .audit-summary { grid-template-columns:1fr; }
   .audit-table,
@@ -95,7 +156,7 @@
   <div class="section-hd">
     <div>
       <h2>Course Skill Cleanup</h2>
-      <p class="audit-meta">Delete terms that are not real skills. This only removes the selected skill from the selected module.</p>
+      <p class="audit-meta">Review the source context, reclassify skill types, and remove terms that are not real skills.</p>
     </div>
     <span class="badge badge-gold">Manual audit</span>
   </div>
@@ -108,7 +169,7 @@
           <th>Skill</th>
           <th>Module</th>
           <th>Evidence</th>
-          <th>Type</th>
+          <th>Review</th>
           <th>Source</th>
           <th></th>
         </tr>
@@ -122,12 +183,49 @@
           </td>
           <td>{{ row.module.name }}</td>
           <td>
-            <div>{{ row.text|default:"-" }}</div>
+            <div class="audit-evidence-text">{{ row.text|default:row.skill }}</div>
+            {% if row.context %}
+            <details class="audit-context-toggle" open>
+              <summary>Context</summary>
+              <div class="audit-context">{{ row.context }}</div>
+            </details>
+            {% else %}
+            <div class="audit-meta">No source context stored.</div>
+            {% endif %}
             {% if row.label_status %}<div class="audit-meta">{{ row.label_status }}</div>{% endif %}
           </td>
           <td>
-            <div>{{ row.skill_type|default:"-" }}</div>
-            {% if row.tier %}<div class="audit-meta">{{ row.tier }}</div>{% endif %}
+            <form class="audit-review-form" method="post" action="{% url 'course-skill-audit' course.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="module_id" value="{{ row.module.pk }}">
+              <input type="hidden" name="original_skill" value="{{ row.skill }}">
+              <input type="hidden" name="entity_id" value="{{ row.entity_id }}">
+              <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
+              <div class="audit-review-grid">
+                <input class="form-control" name="skill" value="{{ row.skill }}" aria-label="Skill">
+                <select class="form-control" name="tier" aria-label="Tier">
+                  <option value="explicit" {% if row.tier == "explicit" %}selected{% endif %}>explicit</option>
+                  <option value="capability" {% if row.tier == "capability" %}selected{% endif %}>capability</option>
+                  <option value="method" {% if row.tier == "method" %}selected{% endif %}>method</option>
+                  <option value="tool" {% if row.tier == "tool" %}selected{% endif %}>tool</option>
+                  <option value="transferable" {% if row.tier == "transferable" %}selected{% endif %}>transferable</option>
+                  <option value="candidate" {% if row.tier == "candidate" %}selected{% endif %}>candidate</option>
+                  <option value="reviewed" {% if row.tier == "reviewed" %}selected{% endif %}>reviewed</option>
+                  <option value="exclude" {% if row.tier == "exclude" %}selected{% endif %}>exclude</option>
+                </select>
+              </div>
+              <input type="hidden" name="label" value="{{ row.label|default:'SKILL' }}">
+              <div class="skill-type-toggle" aria-label="Skill type">
+                <label><input type="radio" name="skill_type" value="business" {% if row.skill_type == "business" %}checked{% endif %}><span>business</span></label>
+                <label><input type="radio" name="skill_type" value="technical" {% if row.skill_type == "technical" %}checked{% endif %}><span>technical</span></label>
+                <label><input type="radio" name="skill_type" value="soft" {% if row.skill_type == "soft" %}checked{% endif %}><span>soft</span></label>
+                <label><input type="radio" name="skill_type" value="domain" {% if row.skill_type == "domain" or not row.skill_type %}checked{% endif %}><span>domain</span></label>
+                <label><input type="radio" name="skill_type" value="exclude" {% if row.skill_type == "exclude" %}checked{% endif %}><span>exclude</span></label>
+              </div>
+              <div class="audit-actions">
+                <button type="submit" class="btn btn-outline btn-sm">Save</button>
+              </div>
+            </form>
           </td>
           <td>{{ row.source|default:"-" }}</td>
           <td style="text-align:right;">

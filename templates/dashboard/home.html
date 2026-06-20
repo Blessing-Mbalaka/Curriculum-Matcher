@@ -429,6 +429,14 @@
           <div class="match-skill-label">Missing skills</div>
           <div class="chip-list">{% for skill in r.missing_skills|slice:":6" %}<span class="chip chip-miss">{{ skill }}</span>{% empty %}<span class="text-muted">No missing skills recorded.</span>{% endfor %}</div>
         </div>
+        <div class="match-skill-block">
+          <div class="match-skill-label">Job evidence skills</div>
+          <div class="chip-list">{% for skill in r.job_display_skills|slice:":12" %}<span class="chip">{{ skill }}</span>{% empty %}<span class="text-muted">No job skill evidence stored.</span>{% endfor %}</div>
+        </div>
+        <div class="match-skill-block">
+          <div class="match-skill-label">Course evidence skills</div>
+          <div class="chip-list">{% for skill in r.course_display_skills|slice:":12" %}<span class="chip">{{ skill }}</span>{% empty %}<span class="text-muted">No course skill evidence stored.</span>{% endfor %}</div>
+        </div>
       </div>
       {% empty %}
       <p class="text-muted text-sm">No similarity scores yet. Queue an analysis after adding courses and jobs.</p>

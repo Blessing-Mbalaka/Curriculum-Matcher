@@ -1,0 +1,683 @@
+{% extends "base.html" %}
+{% block title %}Skill Vector Space - CurriculumMatch{% endblock %}
+{% block page_title %}Skill Vector Space{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-outline" href="{{ csv_url }}">Download Visual CSV</a>
+  <a class="btn btn-outline" href="{{ back_url }}">Back to Data Export</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.content { max-width:none; padding:0; }
+.vector-shell { height:calc(100vh - 57px); display:grid; grid-template-rows:auto 1fr; background:#070707; color:#fff; }
+.vector-toolbar {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding:12px 16px;
+  border-bottom:1px solid rgba(245,130,32,.28);
+  background:rgba(10,10,10,.92);
+}
+.vector-title { font-weight:800; font-size:14px; }
+.vector-sub { color:rgba(255,255,255,.58); font-size:12px; margin-top:2px; }
+.vector-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.vector-search, .vector-filter {
+  width:min(280px, 36vw);
+  min-width:180px;
+  height:34px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.18);
+  background:rgba(255,255,255,.08);
+  color:#fff;
+  padding:0 10px;
+  outline:none;
+}
+.vector-filter { width:150px; min-width:132px; }
+.vector-search:focus, .vector-filter:focus { border-color:var(--uj-orange); box-shadow:0 0 0 3px rgba(245,130,32,.16); }
+.vector-filter option { color:#111; background:#fff; }
+.vector-stage { position:relative; min-height:0; overflow:hidden; }
+.vector-stage::before {
+  content:"";
+  position:absolute;
+  inset:0;
+  background:
+    radial-gradient(circle, rgba(255,255,255,.22) 1px, transparent 1.8px) 0 0 / 54px 54px,
+    radial-gradient(circle, rgba(245,130,32,.24) 1px, transparent 1.8px) 18px 22px / 86px 86px,
+    #070707;
+  pointer-events:none;
+}
+#skillVectorGraph { position:relative; height:100%; z-index:1; }
+.vector-empty {
+  position:absolute;
+  inset:0;
+  display:none;
+  place-items:center;
+  z-index:2;
+  background:rgba(7,7,7,.78);
+  color:rgba(255,255,255,.72);
+  text-align:center;
+}
+.vector-empty.active { display:grid; }
+.vector-stat { border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:4px 10px; color:rgba(255,255,255,.72); font-size:11px; }
+.btn-on-dark { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.2); }
+.btn-on-dark:hover { border-color:var(--uj-orange); }
+.vector-panel {
+  position:absolute;
+  left:16px;
+  bottom:16px;
+  z-index:2;
+  width:min(380px, calc(100% - 32px));
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:8px;
+  background:rgba(7,7,7,.76);
+  color:rgba(255,255,255,.78);
+  padding:12px;
+  backdrop-filter:blur(10px);
+}
+.vector-panel-title { color:#fff; font-weight:800; font-size:13px; margin-bottom:4px; }
+.vector-panel-meta { font-size:12px; line-height:1.45; }
+.vector-legend {
+  position:absolute;
+  right:16px;
+  bottom:16px;
+  z-index:2;
+  width:min(250px, calc(100% - 32px));
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:8px;
+  background:rgba(7,7,7,.76);
+  color:rgba(255,255,255,.78);
+  padding:12px;
+  backdrop-filter:blur(10px);
+}
+.vector-legend-title {
+  color:#fff;
+  font-weight:800;
+  font-size:13px;
+  margin-bottom:8px;
+}
+.vector-legend-grid {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:7px;
+}
+.vector-legend-item {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+}
+.vector-legend-swatch {
+  width:12px;
+  height:12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.48);
+  flex:0 0 auto;
+}
+.vector-legend-line {
+  width:18px;
+  height:3px;
+  border-radius:999px;
+  flex:0 0 auto;
+}
+@media (max-width:760px) {
+  .vector-shell { height:calc(100vh - 49px); }
+  .vector-toolbar { align-items:flex-start; flex-direction:column; }
+  .vector-actions { width:100%; }
+  .vector-search, .vector-filter { width:100%; }
+  .vector-panel,
+  .vector-legend {
+    position:relative;
+    left:auto;
+    right:auto;
+    bottom:auto;
+    width:auto;
+    margin:12px;
+  }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="vector-shell">
+  <div class="vector-toolbar">
+    <div>
+      <div class="vector-title">Semantic Skill Vector Space</div>
+      <div class="vector-sub" id="vectorStatus">Loading root jobs, courses, skills, and cosine-similarity strands.</div>
+    </div>
+    <div class="vector-actions">
+      <span class="graph-insight">
+        <button class="graph-insight-btn" type="button" aria-label="Explain semantic vector space"></button>
+        <span class="graph-insight-popover">
+          <span class="graph-insight-title">Vector reading</span>
+          <span class="graph-insight-body">Root job and course nodes connect to extracted skills. Orange strands show skill-to-skill semantic similarity, and evidence strands show where each skill was found.</span>
+        </span>
+      </span>
+      <select class="vector-filter" id="vectorSourceFilter" aria-label="Source">
+        <option value="">All sources</option>
+        <option value="job-root">Jobs</option>
+        <option value="course-root">Courses</option>
+        <option value="skill">Skills</option>
+      </select>
+      <select class="vector-filter" id="vectorSkillFilter" aria-label="Skill">
+        <option value="">All skills</option>
+      </select>
+      <select class="vector-filter" id="vectorSectorFilter" aria-label="Sector">
+        <option value="">All sectors</option>
+      </select>
+      <select class="vector-filter" id="vectorTypeFilter" aria-label="Skill type">
+        <option value="">All skill types</option>
+      </select>
+      <select class="vector-filter" id="vectorJobFilter" aria-label="Job">
+        <option value="">All jobs</option>
+      </select>
+      <select class="vector-filter" id="vectorCourseFilter" aria-label="Course or module">
+        <option value="">All courses</option>
+      </select>
+      <select class="vector-filter" id="vectorExtractorFilter" aria-label="Extractor">
+        <option value="">All extractors</option>
+      </select>
+      <input class="vector-search" id="vectorSearch" type="search" placeholder="Find a skill, job, or course">
+      <button class="btn btn-on-dark btn-sm" id="vectorSearchBtn" type="button">Focus</button>
+      <button class="btn btn-on-dark btn-sm" id="clearVectorFiltersBtn" type="button">Clear</button>
+      <button class="btn btn-on-dark btn-sm" id="downloadVectorJsonBtn" type="button">Download JSON</button>
+      <button class="btn btn-on-dark btn-sm" id="downloadVectorCsvBtn" type="button">Download CSV</button>
+      <span class="vector-stat" id="vectorNodeCount">0 nodes</span>
+      <span class="vector-stat" id="vectorEdgeCount">0 strands</span>
+      <button class="btn btn-on-dark btn-sm" id="fitVectorBtn" type="button">Fit view</button>
+      <button class="btn btn-on-dark btn-sm" id="pauseVectorBtn" type="button">Pause</button>
+    </div>
+  </div>
+  <div class="vector-stage">
+    <div id="skillVectorGraph"></div>
+    <div class="vector-empty active" id="vectorEmpty">
+      <div>
+        <div style="font-weight:800;color:#fff;">No vector-space data yet</div>
+        <div class="text-sm mt-2">Add or extract skills, then return to this view.</div>
+      </div>
+    </div>
+    <div class="vector-panel" id="vectorPanel">
+      <div class="vector-panel-title">Select a node or strand</div>
+      <div class="vector-panel-meta">Root jobs and root courses are connected to the actual skills extracted by NLP and NER. Skill-to-skill strands show cosine-style semantic association.</div>
+    </div>
+    <div class="vector-legend" aria-label="Vector space legend">
+      <div class="vector-legend-title">Legend</div>
+      <div class="vector-legend-grid">
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#f58220;"></span>Job root</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#7bd88f;"></span>Course root</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#2f80ed;"></span>Technical skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#39a96b;"></span>Soft skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#ffb703;"></span>Business skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-swatch" style="background:#9aa0a6;"></span>Other skill</div>
+        <div class="vector-legend-item"><span class="vector-legend-line" style="background:rgba(123,216,143,.72);"></span>Evidence strand</div>
+        <div class="vector-legend-item"><span class="vector-legend-line" style="background:rgba(245,130,32,.88);"></span>Similarity strand</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/three-spritetext@1.9.0/dist/three-spritetext.min.js"></script>
+<script src="https://unpkg.com/3d-force-graph@1.73.3/dist/3d-force-graph.min.js"></script>
+<script>
+const vectorApiUrl = "{{ api_url|escapejs }}";
+const vectorContainer = document.getElementById('skillVectorGraph');
+const vectorEmpty = document.getElementById('vectorEmpty');
+const vectorStatus = document.getElementById('vectorStatus');
+const vectorNodeCount = document.getElementById('vectorNodeCount');
+const vectorEdgeCount = document.getElementById('vectorEdgeCount');
+const fitVectorBtn = document.getElementById('fitVectorBtn');
+const pauseVectorBtn = document.getElementById('pauseVectorBtn');
+const vectorSearch = document.getElementById('vectorSearch');
+const vectorSearchBtn = document.getElementById('vectorSearchBtn');
+const clearVectorFiltersBtn = document.getElementById('clearVectorFiltersBtn');
+const downloadVectorJsonBtn = document.getElementById('downloadVectorJsonBtn');
+const downloadVectorCsvBtn = document.getElementById('downloadVectorCsvBtn');
+const vectorFilterControls = {
+  source: document.getElementById('vectorSourceFilter'),
+  skill: document.getElementById('vectorSkillFilter'),
+  sector: document.getElementById('vectorSectorFilter'),
+  type: document.getElementById('vectorTypeFilter'),
+  job: document.getElementById('vectorJobFilter'),
+  course: document.getElementById('vectorCourseFilter'),
+  extractor: document.getElementById('vectorExtractorFilter'),
+};
+const vectorPanel = document.getElementById('vectorPanel');
+let vectorGraph = null;
+let vectorPaused = false;
+let selectedNodeId = null;
+let selectedLinkKey = null;
+let currentGraphData = { nodes:[], links:[] };
+let rawVectorData = null;
+
+function downloadBlob(filename, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportableGraphData() {
+  return {
+    exported_at: new Date().toISOString(),
+    filters: selectedVectorFilters(),
+    counts: {
+      nodes: currentGraphData.nodes.length,
+      links: currentGraphData.links.length,
+    },
+    nodes: currentGraphData.nodes.map(node => ({ ...node })),
+    links: currentGraphData.links.map(link => ({
+      ...link,
+      source: linkEndpointId(link.source),
+      target: linkEndpointId(link.target),
+    })),
+  };
+}
+
+function csvValue(value) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function exportGraphCsv() {
+  const graph = exportableGraphData();
+  const rows = [[
+    'record_type', 'id', 'source', 'target', 'label', 'full_label', 'group',
+    'value', 'similarity_percent', 'skill', 'skill_type', 'sector',
+    'source_type', 'course_code', 'course_name', 'parent_label', 'description',
+  ]];
+  graph.nodes.forEach(node => {
+    rows.push([
+      'node', node.id, '', '', node.label, node.full_label || '', node.group,
+      '', '', node.skill || '', node.skill_type || '', node.sector || '',
+      node.source_type || '', node.course_code || '', node.course_name || '',
+      node.parent_label || '', node.description || '',
+    ]);
+  });
+  graph.links.forEach(link => {
+    rows.push([
+      'link', '', link.source, link.target, link.label || '', link.title || '',
+      link.group || '', link.value || '', link.similarity || '', '', '', '',
+      '', '', '', '', '',
+    ]);
+  });
+  return rows.map(row => row.map(csvValue).join(',')).join('\n');
+}
+
+function timestampForFilename() {
+  return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+}
+
+function nodeColor(node) {
+  if (node.id === selectedNodeId) return '#ffffff';
+  if (node.group === 'job-root') return '#f58220';
+  if (node.group === 'course-root') return '#7bd88f';
+  if (node.skill_type === 'technical') return '#2f80ed';
+  if (node.skill_type === 'soft') return '#39a96b';
+  if (node.skill_type === 'business') return '#ffb703';
+  return '#9aa0a6';
+}
+
+function nodeLabel(node) {
+  const description = node.description ? `\n${node.description.slice(0, 160)}` : '';
+  if (node.group === 'job-root') return `Root job: ${node.full_label || node.label}\nSector: ${node.sector || 'Unclassified'}${description}`;
+  if (node.group === 'course-root') {
+    const courseName = node.course_name || node.full_label || node.label;
+    const courseCode = node.course_code ? `${node.course_code}: ` : '';
+    const school = node.parent_label ? `\nSchool: ${node.parent_label}` : '';
+    return `Course root: ${courseCode}${courseName}${school}\nSource: Course/module skill evidence${description}`;
+  }
+  return `Skill: ${node.full_label || node.label}\nType: ${node.skill_type || 'domain'}\nSector: ${node.sector || 'Unclassified'}`;
+}
+
+function linkKey(link) {
+  const source = typeof link.source === 'object' ? link.source.id : link.source;
+  const target = typeof link.target === 'object' ? link.target.id : link.target;
+  return `${source}->${target}:${link.group || ''}`;
+}
+
+function linkEndpointId(endpoint) {
+  return typeof endpoint === 'object' ? endpoint.id : endpoint;
+}
+
+function linkLabel(link) {
+  if (link.group === 'similarity') return link.title || `Cosine similarity: ${Math.round(link.similarity || 0)}%`;
+  return link.title || 'Root evidence link';
+}
+
+function strandLabel(link) {
+  if (link.group !== 'similarity') return '';
+  return link.label || `${Math.round(link.similarity || 0)}% cosine`;
+}
+
+function focusNode(node) {
+  if (!node || !vectorGraph) return;
+  selectedNodeId = node.id;
+  selectedLinkKey = null;
+  const distance = node.group === 'skill' ? 82 : 112;
+  const distRatio = 1 + distance / Math.hypot(node.x || 1, node.y || 1, node.z || 1);
+  vectorGraph.cameraPosition(
+    { x:(node.x || 1) * distRatio, y:(node.y || 1) * distRatio, z:(node.z || 1) * distRatio },
+    node,
+    900
+  );
+  vectorGraph.nodeColor(nodeColor);
+  vectorGraph.nodeThreeObject(createNodeObject);
+  vectorGraph.linkColor(linkColor);
+  vectorPanel.innerHTML = `
+    <div class="vector-panel-title">${node.group === 'skill' ? 'Skill node' : node.group === 'job-root' ? 'Root job' : 'Root course'}</div>
+    <div class="vector-panel-meta"><strong>${node.full_label || node.label}</strong><br>
+      ${node.group === 'course-root' && node.course_code ? `Course code: ${node.course_code}<br>` : ''}
+      ${node.group === 'course-root' && node.course_name ? `Course name: ${node.course_name}<br>` : ''}
+      ${node.skill_type ? `Type: ${node.skill_type}<br>` : ''}
+      ${node.sector ? `Sector: ${node.sector}<br>` : ''}
+      ${node.group === 'course-root' && node.parent_label ? `School: ${node.parent_label}<br>` : ''}
+      ${node.source ? `Extractor: ${node.source}<br>` : ''}
+      ${node.confidence ? `Confidence: ${Math.round(Number(node.confidence) * 100)}%` : 'Linked evidence is shown as strands.'}
+      ${node.description ? `<br><br>${node.description.slice(0, 220)}` : ''}
+    </div>`;
+}
+
+function sourceTargetIds(link) {
+  return {
+    source: linkEndpointId(link.source),
+    target: linkEndpointId(link.target),
+  };
+}
+
+function linkColor(link) {
+  const ids = sourceTargetIds(link);
+  const isActive = selectedLinkKey === linkKey(link) || selectedNodeId === ids.source || selectedNodeId === ids.target;
+  if (isActive) return '#ffffff';
+  return link.group === 'similarity' ? 'rgba(245,130,32,.74)' : 'rgba(123,216,143,.32)';
+}
+
+function createNodeObject(node) {
+  if (!window.SpriteText || !window.THREE) return null;
+  const group = new THREE.Group();
+  const isRoot = node.group === 'job-root' || node.group === 'course-root';
+  const active = node.id === selectedNodeId;
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(active ? 6.8 : isRoot ? 5.8 : 3.7, 24, 24),
+    new THREE.MeshLambertMaterial({ color:nodeColor(node) })
+  );
+  group.add(sphere);
+  if (active) {
+    const ring = new THREE.Mesh(
+      new THREE.SphereGeometry(isRoot ? 8.2 : 5.4, 24, 24),
+      new THREE.MeshBasicMaterial({ color:0xffffff, wireframe:true, transparent:true, opacity:.46 })
+    );
+    group.add(ring);
+  }
+  const label = new SpriteText(node.label);
+  label.color = '#ffffff';
+  label.backgroundColor = active ? 'rgba(245,130,32,.92)' : isRoot ? 'rgba(245,130,32,.78)' : 'rgba(0,0,0,.54)';
+  label.borderColor = active ? '#ffffff' : isRoot ? '#ffffff' : nodeColor(node);
+  label.borderWidth = .35;
+  label.padding = 3;
+  label.textHeight = active ? 4.6 : isRoot ? 4.3 : 3.3;
+  label.position.y = isRoot ? 10 : 7;
+  group.add(label);
+  return group;
+}
+
+function focusSearchResult() {
+  const term = vectorSearch.value.trim().toLowerCase();
+  if (!term) return;
+  const match = currentGraphData.nodes.find(node =>
+    [node.label, node.full_label, node.skill, node.sector, node.parent_label, node.description]
+      .filter(Boolean)
+      .some(value => String(value).toLowerCase().includes(term))
+  );
+  if (match) focusNode(match);
+}
+
+function setSelectOptions(select, values, labelFn = value => value) {
+  if (!select) return;
+  const currentValue = select.value;
+  const firstOption = select.options[0]?.cloneNode(true);
+  select.innerHTML = '';
+  if (firstOption) select.appendChild(firstOption);
+  values.forEach(value => {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = labelFn(value);
+    select.appendChild(option);
+  });
+  select.value = values.includes(currentValue) ? currentValue : '';
+}
+
+function populateVectorFilters(data) {
+  const nodes = data.nodes || [];
+  const skills = nodes
+    .filter(node => node.group === 'skill')
+    .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
+  const jobRoots = nodes
+    .filter(node => node.group === 'job-root')
+    .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
+  const courseRoots = nodes
+    .filter(node => node.group === 'course-root')
+    .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
+  setSelectOptions(vectorFilterControls.skill, skills.map(node => node.id), id => {
+    const node = skills.find(item => item.id === id);
+    return node?.full_label || node?.label || id;
+  });
+  setSelectOptions(vectorFilterControls.job, jobRoots.map(node => node.id), id => {
+    const node = jobRoots.find(item => item.id === id);
+    return node?.full_label || node?.label || id;
+  });
+  setSelectOptions(vectorFilterControls.course, courseRoots.map(node => node.id), id => {
+    const node = courseRoots.find(item => item.id === id);
+    return node?.full_label || node?.label || id;
+  });
+  setSelectOptions(vectorFilterControls.sector, [...new Set(nodes.map(node => node.sector).filter(Boolean))].sort());
+  setSelectOptions(vectorFilterControls.type, [...new Set(skills.map(node => node.skill_type).filter(Boolean))].sort());
+  setSelectOptions(vectorFilterControls.extractor, [...new Set(skills.map(node => node.source).filter(Boolean))].sort());
+}
+
+function selectedVectorFilters() {
+  return Object.fromEntries(Object.entries(vectorFilterControls).map(([key, control]) => [key, control?.value || '']));
+}
+
+function filteredVectorData(data) {
+  if (!data) return { has_visual_data:false, nodes:[], edges:[], counts:{ nodes:0, edges:0, roots:0, skills:0 } };
+  const filters = selectedVectorFilters();
+  const hasFilters = Object.values(filters).some(Boolean);
+  if (!hasFilters) return data;
+
+  const nodeById = new Map(data.nodes.map(node => [node.id, node]));
+  const visible = new Set();
+  const matchingSkillIds = new Set();
+  const matchingRootIds = new Set();
+
+  data.nodes.forEach(node => {
+    let matches = true;
+    if (filters.source && node.group !== filters.source) matches = false;
+    if (filters.skill && node.id !== filters.skill) matches = false;
+    if (filters.sector && node.sector !== filters.sector) matches = false;
+    if (filters.type && node.skill_type !== filters.type) matches = false;
+    if (filters.extractor && node.source !== filters.extractor) matches = false;
+    if (filters.job && node.id !== filters.job) matches = false;
+    if (filters.course && node.id !== filters.course) matches = false;
+    if (!matches) return;
+    visible.add(node.id);
+    if (node.group === 'skill') matchingSkillIds.add(node.id);
+    if (node.group === 'job-root' || node.group === 'course-root') matchingRootIds.add(node.id);
+  });
+
+  if (filters.skill) matchingSkillIds.add(filters.skill);
+  if (filters.job) matchingRootIds.add(filters.job);
+  if (filters.course) matchingRootIds.add(filters.course);
+
+  data.edges.forEach(edge => {
+    const source = linkEndpointId(edge.source);
+    const target = linkEndpointId(edge.target);
+    if (edge.group === 'evidence') {
+      const sourceNode = nodeById.get(source);
+      const targetNode = nodeById.get(target);
+      const rootId = sourceNode?.group === 'skill' ? target : source;
+      const skillId = sourceNode?.group === 'skill' ? source : target;
+      if (matchingSkillIds.has(skillId) || matchingRootIds.has(rootId)) {
+        visible.add(rootId);
+        visible.add(skillId);
+      }
+    }
+    if (edge.group === 'similarity' && (matchingSkillIds.has(source) || matchingSkillIds.has(target))) {
+      visible.add(source);
+      visible.add(target);
+    }
+  });
+
+  const nodes = data.nodes.filter(node => visible.has(node.id));
+  const edgeList = data.edges.filter(edge => {
+    const source = linkEndpointId(edge.source);
+    const target = linkEndpointId(edge.target);
+    return visible.has(source) && visible.has(target);
+  });
+  return {
+    has_visual_data: Boolean(nodes.length),
+    nodes,
+    edges: edgeList,
+    counts: {
+      nodes: nodes.length,
+      edges: edgeList.length,
+      roots: nodes.filter(node => node.group !== 'skill').length,
+      skills: nodes.filter(node => node.group === 'skill').length,
+    },
+  };
+}
+
+function applyVectorFilters() {
+  selectedNodeId = null;
+  selectedLinkKey = null;
+  renderVectorGraph(filteredVectorData(rawVectorData));
+}
+
+function renderVectorGraph(data) {
+  const hasData = data.has_visual_data && data.nodes.length;
+  vectorEmpty.classList.toggle('active', !hasData);
+  vectorNodeCount.textContent = `${data.counts.nodes} nodes`;
+  vectorEdgeCount.textContent = `${data.counts.edges} strands`;
+  vectorStatus.textContent = hasData
+    ? `${data.counts.roots} roots and ${data.counts.skills} skill nodes. Drag, scroll, and orbit freely.`
+    : 'No skill vector data for the current filters.';
+  if (!hasData) {
+    currentGraphData = { nodes:[], links:[] };
+    vectorGraph?.graphData({ nodes:[], links:[] });
+    return;
+  }
+  if (!window.ForceGraph3D) return;
+
+  const graphData = {
+    nodes: data.nodes.map(node => ({ ...node, name:node.label })),
+    links: data.edges.map(edge => ({ ...edge })),
+  };
+  currentGraphData = graphData;
+  if (!vectorGraph) {
+    vectorGraph = ForceGraph3D()(vectorContainer)
+      .backgroundColor('rgba(0,0,0,0)')
+      .showNavInfo(false)
+      .nodeLabel(nodeLabel)
+      .linkLabel(linkLabel)
+      .nodeColor(nodeColor)
+      .nodeVal(node => node.group === 'job-root' || node.group === 'course-root' ? 9 : 4.5)
+      .linkWidth(link => selectedLinkKey === linkKey(link) ? 4 : link.group === 'similarity' ? Math.max(1, Number(link.value || 1)) : 1.6)
+      .linkColor(linkColor)
+      .linkOpacity(.54)
+      .linkDirectionalParticles(link => link.group === 'similarity' ? 2 : 1)
+      .linkDirectionalParticleWidth(link => link.group === 'similarity' ? 1.8 : 1)
+      .onNodeClick(focusNode)
+      .onLinkClick(link => {
+        selectedLinkKey = linkKey(link);
+        selectedNodeId = null;
+        vectorGraph.linkColor(linkColor);
+        vectorGraph.nodeThreeObject(createNodeObject);
+        vectorGraph.linkWidth(item => selectedLinkKey === linkKey(item) ? 4 : item.group === 'similarity' ? Math.max(1, Number(item.value || 1)) : 1.6);
+        vectorPanel.innerHTML = `
+          <div class="vector-panel-title">${link.group === 'similarity' ? 'Cosine strand' : 'Evidence strand'}</div>
+          <div class="vector-panel-meta"><strong>${linkLabel(link)}</strong><br>${link.group === 'similarity' ? 'This connects skills by semantic association.' : 'This connects a root job or course to an extracted skill.'}</div>`;
+      })
+      .nodeThreeObject(createNodeObject)
+      .linkThreeObjectExtend(true)
+      .linkThreeObject(link => {
+        const text = strandLabel(link);
+        if (!text || !window.SpriteText) return null;
+        const sprite = new SpriteText(text);
+        sprite.color = '#ffffff';
+        sprite.backgroundColor = 'rgba(245,130,32,.70)';
+        sprite.padding = 2;
+        sprite.textHeight = 2.6;
+        return sprite;
+      })
+      .linkPositionUpdate((sprite, { start, end }) => {
+        if (!sprite) return;
+        sprite.position.x = start.x + (end.x - start.x) * .5;
+        sprite.position.y = start.y + (end.y - start.y) * .5;
+        sprite.position.z = start.z + (end.z - start.z) * .5;
+      });
+    vectorGraph.d3Force('charge').strength(-95);
+    vectorGraph.d3Force('link').distance(link => link.group === 'similarity' ? 58 : 42);
+  }
+  vectorGraph.width(vectorContainer.clientWidth || window.innerWidth);
+  vectorGraph.height(vectorContainer.clientHeight || window.innerHeight - 57);
+  vectorGraph.graphData(graphData);
+  setTimeout(() => vectorGraph.zoomToFit(900, 90), 450);
+}
+
+fetch(vectorApiUrl, { headers:{ Accept:'application/json' } })
+  .then(response => response.json())
+  .then(data => {
+    rawVectorData = data;
+    populateVectorFilters(data);
+    renderVectorGraph(filteredVectorData(data));
+  })
+  .catch(() => {
+    vectorStatus.textContent = 'Could not load vector-space data.';
+    vectorEmpty.classList.add('active');
+  });
+
+fitVectorBtn.addEventListener('click', () => vectorGraph?.zoomToFit(600, 90));
+Object.values(vectorFilterControls).forEach(control => control?.addEventListener('change', applyVectorFilters));
+clearVectorFiltersBtn.addEventListener('click', () => {
+  Object.values(vectorFilterControls).forEach(control => {
+    if (control) control.value = '';
+  });
+  vectorSearch.value = '';
+  applyVectorFilters();
+});
+downloadVectorJsonBtn.addEventListener('click', () => {
+  downloadBlob(
+    `skill-vector-space-${timestampForFilename()}.json`,
+    JSON.stringify(exportableGraphData(), null, 2),
+    'application/json'
+  );
+});
+downloadVectorCsvBtn.addEventListener('click', () => {
+  downloadBlob(
+    `skill-vector-space-${timestampForFilename()}.csv`,
+    exportGraphCsv(),
+    'text/csv;charset=utf-8'
+  );
+});
+vectorSearchBtn.addEventListener('click', focusSearchResult);
+vectorSearch.addEventListener('keydown', event => {
+  if (event.key === 'Enter') focusSearchResult();
+});
+pauseVectorBtn.addEventListener('click', () => {
+  vectorPaused = !vectorPaused;
+  if (vectorPaused) vectorGraph?.pauseAnimation?.();
+  if (!vectorPaused) vectorGraph?.resumeAnimation?.();
+  pauseVectorBtn.textContent = vectorPaused ? 'Resume' : 'Pause';
+});
+window.addEventListener('resize', () => {
+  vectorGraph?.width(vectorContainer.clientWidth || window.innerWidth);
+  vectorGraph?.height(vectorContainer.clientHeight || window.innerHeight - 57);
+});
+</script>
+{% endblock %}

@@ -8,6 +8,7 @@ is disabled by default because it is prone to broad false positives.
 """
 
 import logging
+import csv
 from collections import Counter
 from typing import Iterable, List, Tuple
 import hashlib
@@ -117,6 +118,8 @@ def classify_skill_text(skill, mention_text="", context="", pattern="", source="
         scores["soft"] += 1
     if "data" in tokens or "software" in tokens or "technical" in tokens:
         scores["technical"] += 2
+    if any(char in phrase for char in ["#", "+"]):
+        scores["technical"] += 2
     if "leadership" in tokens or "communication" in tokens or "teamwork" in tokens:
         scores["soft"] += 3
     if "management" in tokens and scores["technical"] == 0:
@@ -152,6 +155,7 @@ class SpacySkillExtractor:
         self.alias_lookup = {}
         self.phrase_lookup = {}
         self.patterns_by_label = {}
+        self.dynamic_skill_terms = set()
         self.backend = "regex"
         self._load_spacy()
         self._bert_ner = None
@@ -227,6 +231,8 @@ class SpacySkillExtractor:
             normalized = self._canonical(canonical)
             patterns_by_label.setdefault(normalized, set()).add(canonical)
             patterns_by_label[normalized].update(aliases)
+        for dynamic_skill in self._dynamic_skill_lexicon():
+            patterns_by_label.setdefault(dynamic_skill, set()).add(dynamic_skill)
         self.patterns_by_label = patterns_by_label
 
         for canonical, phrases in patterns_by_label.items():
@@ -248,6 +254,97 @@ class SpacySkillExtractor:
                 if phrase
             ]
             ruler.add_patterns(patterns)
+
+    def _dynamic_skill_lexicon(self) -> set:
+        if not getattr(settings, "DYNAMIC_SKILL_LEXICON_ENABLED", True):
+            return set()
+
+        counts = Counter()
+        reviewed_only = bool(getattr(settings, "DYNAMIC_SKILL_LEXICON_REVIEWED_ONLY", False))
+        allow_excluded = bool(getattr(settings, "DYNAMIC_SKILL_LEXICON_ALLOW_EXCLUDED", True))
+
+        try:
+            self._collect_dynamic_model_skills(counts, reviewed_only=reviewed_only)
+        except Exception as exc:
+            logger.debug("Could not load DB dynamic skill lexicon: %s", exc)
+
+        try:
+            self._collect_dynamic_csv_skills(counts)
+        except Exception as exc:
+            logger.debug("Could not load CSV dynamic skill lexicon: %s", exc)
+
+        min_frequency = max(1, int(getattr(settings, "DYNAMIC_SKILL_LEXICON_MIN_FREQUENCY", 1)))
+        max_terms = max(0, int(getattr(settings, "DYNAMIC_SKILL_LEXICON_MAX_TERMS", 1500)))
+        terms = [
+            skill
+            for skill, count in counts.most_common()
+            if count >= min_frequency and (allow_excluded or skill not in BUSINESS_SKILL_EXCLUDED_TERMS)
+        ]
+        if max_terms:
+            terms = terms[:max_terms]
+        self.dynamic_skill_terms = set(terms)
+        return self.dynamic_skill_terms
+
+    def _collect_dynamic_model_skills(self, counts: Counter, reviewed_only: bool = False) -> None:
+        from courses.models import Module
+        from jobs.models import JobAdvert
+
+        for model in (Module, JobAdvert):
+            for obj in model.objects.only("skills_extracted", "skill_entities").iterator(chunk_size=200):
+                for skill in self._skills_from_record(obj, reviewed_only=reviewed_only):
+                    counts[skill] += 1
+
+    def _skills_from_record(self, obj, reviewed_only: bool = False):
+        entity_skills = []
+        for entity in getattr(obj, "skill_entities", None) or []:
+            if not isinstance(entity, dict):
+                continue
+            if entity.get("label_status") == "candidate":
+                continue
+            if reviewed_only and entity.get("label_status") != "reviewed":
+                continue
+            if (entity.get("label") or "SKILL") != "SKILL":
+                continue
+            skill = self._canonical(entity.get("skill") or entity.get("text") or "")
+            if skill:
+                entity_skills.append(skill)
+        if entity_skills:
+            return entity_skills
+        if reviewed_only:
+            return []
+        return [
+            self._canonical(skill)
+            for skill in (getattr(obj, "skills_extracted", None) or [])
+            if self._canonical(skill)
+        ]
+
+    def _collect_dynamic_csv_skills(self, counts: Counter) -> None:
+        csv_path = getattr(settings, "DYNAMIC_SKILL_LEXICON_CSV_PATH", "")
+        if not csv_path:
+            return
+        path = Path(csv_path)
+        if not path.is_absolute():
+            path = Path(settings.BASE_DIR) / path
+        if not path.exists():
+            return
+        with path.open(newline="", encoding="utf-8-sig") as handle:
+            rows = [row for row in csv.reader(handle) if row]
+        if not rows:
+            return
+        header = [cell.lower().strip() for cell in rows[0]]
+        skill_columns = {"skill", "skills", "term", "name"}
+        if any(cell in skill_columns for cell in header):
+            skill_index = next(index for index, cell in enumerate(header) if cell in skill_columns)
+            data_rows = rows[1:]
+        else:
+            skill_index = 0
+            data_rows = rows
+        for row in data_rows:
+            if skill_index >= len(row):
+                continue
+            skill = self._canonical(row[skill_index])
+            if skill:
+                counts[skill] += 1
 
     def _canonical(self, value: str) -> str:
         return " ".join(value.lower().replace("-", " ").split())
@@ -345,7 +442,7 @@ class SpacySkillExtractor:
             canonical = self._canonical(skill)
             if not canonical:
                 return
-            if canonical in BUSINESS_SKILL_EXCLUDED_TERMS:
+            if canonical in BUSINESS_SKILL_EXCLUDED_TERMS and canonical not in self.dynamic_skill_terms:
                 return
             item = entities.setdefault(canonical, {
                 "id": self._entity_id(canonical),

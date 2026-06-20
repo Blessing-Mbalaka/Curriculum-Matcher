@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import django
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,16 +57,31 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+USE_SQLITE = os.environ.get("USE_SQLITE", "True") == "True"
+RUNNING_IN_DOCKER = os.environ.get("RUNNING_IN_DOCKER", "False") == "True"
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-        "OPTIONS": {
-            "timeout": 30,
-        },
+DEFAULT_OLLAMA_HOST = "host.docker.internal" if RUNNING_IN_DOCKER else "127.0.0.1"
+DEFAULT_OLLAMA_BASE_URL = f"http://{DEFAULT_OLLAMA_HOST}:11434"
+os.environ.setdefault("OLLAMA_HOST", DEFAULT_OLLAMA_BASE_URL)
+
+if USE_SQLITE:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": os.environ.get("DB_NAME", "jobs"),
+            "USER": os.environ.get("DB_USER", "postgres"),
+            "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+            "HOST": os.environ.get("DB_HOST", "localhost"),
+            "PORT": os.environ.get("DB_PORT", "5432"),
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -111,6 +127,12 @@ BERT_SKILL_NER_ENABLED = os.environ.get("BERT_SKILL_NER_ENABLED", "True") == "Tr
 BERT_SKILL_NER_MIN_CONFIDENCE = float(os.environ.get("BERT_SKILL_NER_MIN_CONFIDENCE", "0.65"))
 SKILL_REGEX_FALLBACK_ENABLED = os.environ.get("SKILL_REGEX_FALLBACK_ENABLED", "False") == "True"
 SKILL_NOUN_CHUNK_MINING_ENABLED = os.environ.get("SKILL_NOUN_CHUNK_MINING_ENABLED", "False") == "True"
+DYNAMIC_SKILL_LEXICON_ENABLED = os.environ.get("DYNAMIC_SKILL_LEXICON_ENABLED", "True") == "True"
+DYNAMIC_SKILL_LEXICON_REVIEWED_ONLY = os.environ.get("DYNAMIC_SKILL_LEXICON_REVIEWED_ONLY", "False") == "True"
+DYNAMIC_SKILL_LEXICON_MIN_FREQUENCY = int(os.environ.get("DYNAMIC_SKILL_LEXICON_MIN_FREQUENCY", "1"))
+DYNAMIC_SKILL_LEXICON_MAX_TERMS = int(os.environ.get("DYNAMIC_SKILL_LEXICON_MAX_TERMS", "1500"))
+DYNAMIC_SKILL_LEXICON_ALLOW_EXCLUDED = os.environ.get("DYNAMIC_SKILL_LEXICON_ALLOW_EXCLUDED", "True") == "True"
+DYNAMIC_SKILL_LEXICON_CSV_PATH = os.environ.get("DYNAMIC_SKILL_LEXICON_CSV_PATH", "")
 AUTO_TRAIN_COURSE_SKILL_NER = os.environ.get("AUTO_TRAIN_COURSE_SKILL_NER", "True") == "True"
 COURSE_SKILL_NER_AUTO_EPOCHS = int(os.environ.get("COURSE_SKILL_NER_AUTO_EPOCHS", "8"))
 COURSE_SKILL_NER_MIN_EXAMPLES = int(os.environ.get("COURSE_SKILL_NER_MIN_EXAMPLES", "5"))
@@ -123,5 +145,10 @@ SEMANTIC_EMBED_CHUNK_CHARS = int(os.environ.get("SEMANTIC_EMBED_CHUNK_CHARS", "3
 SEMANTIC_EMBED_MAX_CHUNKS = int(os.environ.get("SEMANTIC_EMBED_MAX_CHUNKS", "12"))
 
 TINYLLAMA_MODEL = os.environ.get("TINYLLAMA_MODEL", "tinyllama")
-TINYLLAMA_ENDPOINT = os.environ.get("TINYLLAMA_ENDPOINT", "http://127.0.0.1:11434/api/generate")
+TINYLLAMA_ENDPOINT = os.environ.get("TINYLLAMA_ENDPOINT", f"{DEFAULT_OLLAMA_BASE_URL}/api/generate")
 TINYLLAMA_TIMEOUT_SECONDS = int(os.environ.get("TINYLLAMA_TIMEOUT_SECONDS", "45"))
+
+OLLAMA_VERIFICATION_MODEL = os.environ.get("OLLAMA_VERIFICATION_MODEL", "ministral-3:3b")
+OLLAMA_VERIFICATION_ENDPOINT = os.environ.get("OLLAMA_VERIFICATION_ENDPOINT", f"{DEFAULT_OLLAMA_BASE_URL}/api/generate")
+OLLAMA_VERIFICATION_TIMEOUT_SECONDS = int(os.environ.get("OLLAMA_VERIFICATION_TIMEOUT_SECONDS", "90"))
+OLLAMA_VERIFICATION_PROMPT_MAX_CHARS = int(os.environ.get("OLLAMA_VERIFICATION_PROMPT_MAX_CHARS", "9000"))

@@ -34,9 +34,11 @@ from analysis.rag_chatbot import (
     scoped_knowledge_chunks,
 )
 from analysis.spacyskillextraction import classify_skill_text
+from analysis.verification import suspicious_job_records, suspicious_module_records
 # Plain functions now — no .delay(), no Celery
 from analysis.tasks import (
     run_gap_analysis_task,
+    start_skill_verification_task,
     import_csv_task,
     fetch_adzuna_task,
     start_continuous_adzuna_task,
@@ -228,6 +230,7 @@ def current_extracted_skill_rows(model, limit=10):
                     raw.get("skill_type") == "exclude"
                     or raw.get("label") == "exclude"
                     or raw.get("source") == "regex"
+                    or raw.get("label_status") == "candidate"
                 ):
                     continue
                 skill = raw.get("skill") or raw.get("text") or ""
@@ -389,6 +392,61 @@ def job_skill_entities(job, fallback_skills=None, limit=10):
     return entities
 
 
+def object_skill_names(obj, fallback_skills=None, limit=12):
+    raw_entities = getattr(obj, "skill_entities", None) or []
+    if not raw_entities:
+        raw_entities = getattr(obj, "skills_extracted", None) or fallback_skills or []
+    seen = set()
+    skills = []
+    for raw in raw_entities:
+        if isinstance(raw, dict):
+            if (
+                raw.get("skill_type") == "exclude"
+                or raw.get("label") == "exclude"
+                or raw.get("label_status") == "candidate"
+            ):
+                continue
+            skill = raw.get("skill") or raw.get("text") or ""
+        else:
+            skill = str(raw or "")
+        skill = " ".join(skill.lower().replace("-", " ").split())
+        if not skill or skill in seen:
+            continue
+        seen.add(skill)
+        skills.append(skill)
+        if len(skills) >= limit:
+            break
+    return skills
+
+
+def course_result_skill_names(course, fallback_skills=None, limit=12):
+    counter = Counter()
+    modules = list(getattr(course, "_prefetched_objects_cache", {}).get("modules", []))
+    if not modules:
+        modules = list(course.modules.all())
+    for module in modules:
+        for skill in object_skill_names(module, limit=limit * 2):
+            counter[skill] += 1
+    if not counter and fallback_skills:
+        counter.update(" ".join(str(skill or "").lower().replace("-", " ").split()) for skill in fallback_skills if skill)
+    return [skill for skill, _count in counter.most_common(limit)]
+
+
+def attach_result_skill_evidence(results, limit=12):
+    for result in results:
+        result.job_display_skills = object_skill_names(
+            result.job,
+            fallback_skills=(result.matched_skills or []) + (result.missing_skills or []),
+            limit=limit,
+        )
+        result.course_display_skills = course_result_skill_names(
+            result.course,
+            fallback_skills=(result.matched_skills or []) + (result.extra_skills or []),
+            limit=limit,
+        )
+    return results
+
+
 def entity_row(source_type, source_obj, entity, source_label, parent_label=""):
     normalized = normalize_skill_entity(entity)
     if isinstance(entity, dict):
@@ -479,6 +537,7 @@ def filtered_skill_entity_rows(request):
     skill_type = request.GET.get("skill_type", "").strip()
     sector = request.GET.get("sector", "").strip()
     job_title = request.GET.get("job_title", "").strip()
+    label_status = request.GET.get("label_status", "").strip()
     q = request.GET.get("q", "").strip().lower()
     if source:
         rows = [row for row in rows if row["source_type"] == source]
@@ -488,6 +547,8 @@ def filtered_skill_entity_rows(request):
         rows = [row for row in rows if row["sector"] == sector]
     if job_title:
         rows = [row for row in rows if row["job_title"] == job_title]
+    if label_status:
+        rows = [row for row in rows if row["label_status"] == label_status]
     if q:
         rows = [
             row for row in rows
@@ -501,27 +562,102 @@ def filtered_skill_entity_rows(request):
     return rows
 
 
-def update_entity_collection(obj, entity_id, chunk_id, updates):
+def active_entity_skill_names(entities):
+    skills = set()
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        if entity.get("label_status") == "candidate":
+            continue
+        if entity.get("skill_type") == "exclude" or entity.get("label") == "exclude":
+            continue
+        skill = entity.get("skill")
+        if skill:
+            skills.add(skill)
+    return sorted(skills)
+
+
+def source_model_for_type(source_type):
+    if source_type == "job":
+        return JobAdvert
+    if source_type == "module":
+        return Module
+    return None
+
+
+def coerce_optional_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def coerce_optional_float(value):
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def request_entity_updates(request):
+    updates = {
+        "skill": request.POST.get("skill", "").strip(),
+        "label": request.POST.get("label", "").strip() or "SKILL",
+        "tier": request.POST.get("tier", "").strip() or "reviewed",
+        "skill_type": request.POST.get("skill_type", "").strip() or "domain",
+        "text": request.POST.get("text", "").strip(),
+        "source": request.POST.get("source", "").strip(),
+        "pattern": request.POST.get("pattern", "").strip(),
+        "pos_signature": request.POST.get("pos_signature", "").strip(),
+        "verification_notes": request.POST.get("verification_notes", "").strip(),
+    }
+    for key in ("start", "end", "mention_count"):
+        if key in request.POST:
+            updates[key] = coerce_optional_int(request.POST.get(key))
+    if "confidence" in request.POST:
+        updates["confidence"] = coerce_optional_float(request.POST.get("confidence"))
+    return updates
+
+
+def hydrate_skill_entities(obj):
     entities = list(getattr(obj, "skill_entities", None) or [])
-    if not entities and getattr(obj, "skills_extracted", None):
-        source_type = "job" if isinstance(obj, JobAdvert) else "module"
-        entities = [
-            # Preserve stable legacy chunk IDs while upgrading the row to editable entity data.
-            {
-                "id": skill_entity_id(skill),
-                "chunk_id": f"{source_type}-{obj.id}-{skill_entity_id(skill)}",
-                "skill": skill,
-                "label": "SKILL",
-                "tier": classify_skill_text(skill)["tier"],
-                "skill_type": classify_skill_text(skill)["skill_type"],
-                "classification_scores": classify_skill_text(skill)["scores"],
-                "source": "legacy",
-                "confidence": None,
-                "mention_count": 1,
-                "label_status": "legacy",
-            }
-            for skill in obj.skills_extracted
-        ]
+    if not getattr(obj, "skills_extracted", None):
+        return entities
+    existing_skill_names = {
+        " ".join((entity.get("skill") or "").lower().replace("-", " ").split())
+        for entity in entities
+        if isinstance(entity, dict)
+    }
+    source_type = "job" if isinstance(obj, JobAdvert) else "module"
+    for skill in obj.skills_extracted:
+        normalized_skill = " ".join(str(skill or "").lower().replace("-", " ").split())
+        if not normalized_skill or normalized_skill in existing_skill_names:
+            continue
+        classification = classify_skill_text(skill)
+        entities.append({
+            "id": skill_entity_id(skill),
+            "chunk_id": f"{source_type}-{obj.id}-{skill_entity_id(skill)}",
+            "skill": skill,
+            "label": "SKILL",
+            "tier": classification["tier"],
+            "skill_type": classification["skill_type"],
+            "classification_scores": classification["scores"],
+            "source": "legacy",
+            "confidence": None,
+            "mention_count": 1,
+            "text": skill,
+            "label_status": "legacy",
+        })
+        existing_skill_names.add(normalized_skill)
+    return entities
+
+
+def update_entity_collection(obj, entity_id, chunk_id, updates):
+    entities = hydrate_skill_entities(obj)
     changed = False
     for entity in entities:
         if not isinstance(entity, dict):
@@ -534,9 +670,103 @@ def update_entity_collection(obj, entity_id, chunk_id, updates):
     if not changed:
         return False
     obj.skill_entities = entities
-    obj.skills_extracted = sorted({entity.get("skill") for entity in entities if isinstance(entity, dict) and entity.get("skill")})
+    obj.skills_extracted = active_entity_skill_names(entities)
     obj.save(update_fields=["skill_entities", "skills_extracted"])
     return True
+
+
+def create_entity_in_collection(obj, updates):
+    skill = updates.get("skill", "").strip()
+    if not skill:
+        return False
+    source_type = "job" if isinstance(obj, JobAdvert) else "module"
+    classification = classify_skill_text(skill)
+    entity_id = skill_entity_id(skill)
+    base_chunk_id = f"{source_type}-{obj.id}-manual-{entity_id}"
+    entities = hydrate_skill_entities(obj)
+    existing_chunk_ids = {
+        entity.get("chunk_id")
+        for entity in entities
+        if isinstance(entity, dict)
+    }
+    chunk_id = base_chunk_id
+    counter = 2
+    while chunk_id in existing_chunk_ids:
+        chunk_id = f"{base_chunk_id}-{counter}"
+        counter += 1
+    entity = {
+        "id": entity_id,
+        "chunk_id": chunk_id,
+        "skill": skill,
+        "label": updates.get("label") or "SKILL",
+        "tier": updates.get("tier") or "reviewed",
+        "skill_type": updates.get("skill_type") or classification["skill_type"],
+        "classification_scores": classification["scores"],
+        "source": updates.get("source") or "human",
+        "confidence": updates.get("confidence"),
+        "mention_count": updates.get("mention_count") or 1,
+        "text": updates.get("text") or skill,
+        "start": updates.get("start"),
+        "end": updates.get("end"),
+        "pattern": updates.get("pattern") or "",
+        "pos_signature": updates.get("pos_signature") or "",
+        "verification_notes": updates.get("verification_notes") or "",
+        "label_status": "reviewed",
+    }
+    entities.append(entity)
+    obj.skill_entities = entities
+    obj.skills_extracted = active_entity_skill_names(entities)
+    obj.save(update_fields=["skill_entities", "skills_extracted"])
+    return True
+
+
+def delete_entity_from_collection(obj, entity_id, chunk_id):
+    entities = hydrate_skill_entities(obj)
+    next_entities = [
+        entity for entity in entities
+        if not (
+            isinstance(entity, dict)
+            and (entity.get("chunk_id") == chunk_id or entity.get("id") == entity_id)
+        )
+    ]
+    if len(next_entities) == len(entities):
+        return False
+    obj.skill_entities = next_entities
+    obj.skills_extracted = active_entity_skill_names(next_entities)
+    obj.save(update_fields=["skill_entities", "skills_extracted"])
+    return True
+
+
+def approve_candidate_entities(source_type="all"):
+    models = []
+    if source_type in {"all", "job"}:
+        models.append(JobAdvert)
+    if source_type in {"all", "module"}:
+        models.append(Module)
+    approved = 0
+    documents = 0
+    for model in models:
+        for obj in model.objects.only("id", "skills_extracted", "skill_entities").iterator(chunk_size=200):
+            entities = hydrate_skill_entities(obj)
+            changed = False
+            for entity in entities:
+                if not isinstance(entity, dict):
+                    continue
+                if entity.get("label_status") != "candidate":
+                    continue
+                if entity.get("label") == "exclude" or entity.get("skill_type") == "exclude":
+                    continue
+                entity["label"] = entity.get("label") or "SKILL"
+                entity["tier"] = "reviewed" if entity.get("tier") == "candidate" else entity.get("tier", "reviewed")
+                entity["label_status"] = "reviewed"
+                approved += 1
+                changed = True
+            if changed:
+                obj.skill_entities = entities
+                obj.skills_extracted = active_entity_skill_names(entities)
+                obj.save(update_fields=["skill_entities", "skills_extracted"])
+                documents += 1
+    return approved, documents
 
 
 def recommendation_skill_insight(missing_counter, matched_counter):
@@ -620,6 +850,7 @@ class DashboardView(TemplateView):
             GapResult.objects
             .filter(run=selected_run)
             .select_related("course", "job")
+            .prefetch_related("course__modules")
             if selected_run
             else GapResult.objects.none()
         )
@@ -641,7 +872,7 @@ class DashboardView(TemplateView):
         latest_jobs_only = TaskRecord.objects.filter(run_name__startswith="Jobs Only").order_by("-created_at").first()
         ctx["should_autostart_jobs"] = not ctx["live_task"] and not (latest_jobs_only and latest_jobs_only.status == "STOPPED")
         ctx["avg_score"] = (selected_results.aggregate(v=Avg("similarity_score"))["v"] or 0) * 100
-        ctx["latest_results"] = selected_results.order_by("-similarity_score")[:8]
+        ctx["latest_results"] = attach_result_skill_evidence(list(selected_results.order_by("-similarity_score")[:8]))
         ctx["network_schools"] = (
             Course.objects
             .exclude(university_name="")
@@ -667,9 +898,11 @@ class DataExportView(TemplateView):
         current_skill_type = self.request.GET.get("skill_type", "")
         current_sector = self.request.GET.get("sector", "")
         current_job_title = self.request.GET.get("job_title", "")
+        current_label_status = self.request.GET.get("label_status", "")
         current_q = self.request.GET.get("q", "")
         tile_query = {
             "skill_type": current_skill_type,
+            "label_status": current_label_status,
             "q": current_q,
         }
         tile_query = {key: value for key, value in tile_query.items() if value}
@@ -680,6 +913,7 @@ class DataExportView(TemplateView):
             "skill_type": current_skill_type,
             "sector": current_sector,
             "job_title": current_job_title,
+            "label_status": current_label_status,
             "q": current_q,
         }
         export_query = {key: value for key, value in export_query.items() if value}
@@ -694,6 +928,7 @@ class DataExportView(TemplateView):
             "current_skill_type": current_skill_type,
             "current_sector": current_sector,
             "current_job_title": current_job_title,
+            "current_label_status": current_label_status,
             "current_q": current_q,
             "skill_export_href": f"{reverse('skill-entity-export')}?{urlencode(export_query)}" if export_query else reverse("skill-entity-export"),
             "visual_export_href": f"{reverse('data-export-visual-export')}?{urlencode(export_query)}" if export_query else reverse("data-export-visual-export"),
@@ -722,10 +957,128 @@ class DataExportView(TemplateView):
                 },
             ],
             "skill_types": sorted({row["skill_type"] for row in all_rows if row["skill_type"]}),
+            "label_statuses": sorted({row["label_status"] for row in all_rows if row["label_status"]}),
             "sectors": sorted({row["sector"] for row in all_rows if row["sector"]}),
             "job_titles": sorted({row["job_title"] for row in all_rows if row["job_title"]}),
         })
         return ctx
+
+
+def row_evidence_context(row, max_chars=360):
+    model = JobAdvert if row["source_type"] == "job" else Module
+    obj = model.objects.filter(pk=row["source_id"]).first()
+    if not obj:
+        return ""
+    text = obj.analysis_text() if isinstance(obj, JobAdvert) else obj.content or ""
+    if not text:
+        return ""
+    start = row.get("start")
+    end = row.get("end")
+    try:
+        start = int(start)
+        end = int(end)
+    except (TypeError, ValueError):
+        start = text.lower().find((row.get("skill") or "").lower())
+        end = start + len(row.get("skill") or "") if start >= 0 else 0
+    if start < 0 or end <= start:
+        return re.sub(r"\s+", " ", text).strip()[:max_chars]
+    left = max(0, start - max_chars // 2)
+    right = min(len(text), end + max_chars // 2)
+    prefix = "..." if left else ""
+    suffix = "..." if right < len(text) else ""
+    return prefix + re.sub(r"\s+", " ", text[left:right]).strip() + suffix
+
+
+def review_status_counts(rows):
+    counts = Counter(row["label_status"] or "unknown" for row in rows)
+    return {
+        "candidate": counts.get("candidate", 0),
+        "reviewed": counts.get("reviewed", 0),
+        "legacy": counts.get("legacy", 0),
+        "machine": counts.get("machine", 0),
+        "total": len(rows),
+    }
+
+
+def oversight_candidate_rows(limit=60):
+    rows = [
+        row for row in iter_skill_entity_rows()
+        if row.get("label_status") == "candidate"
+        and row.get("skill_type") != "exclude"
+        and row.get("label") != "exclude"
+    ]
+    for row in rows[:limit]:
+        row["context"] = row_evidence_context(row)
+    return rows[:limit]
+
+
+def oversight_recent_reviewed_rows(limit=24):
+    rows = [
+        row for row in iter_skill_entity_rows()
+        if row.get("label_status") == "reviewed"
+        and row.get("skill_type") != "exclude"
+        and row.get("label") != "exclude"
+    ]
+    return rows[-limit:][::-1]
+
+
+def oversight_suspicious_records(max_jobs=12, max_modules=12):
+    records = []
+    for record in suspicious_job_records(limit=max_jobs):
+        record["review_url"] = f"{reverse('data-export')}?source=job&q={record['source_id']}"
+        records.append(record)
+    for record in suspicious_module_records(limit=max_modules):
+        record["review_url"] = f"{reverse('data-export')}?source=module&q={record['source_id']}"
+        records.append(record)
+    return records
+
+
+class HumanOversightView(TemplateView):
+    template_name = "dashboard/human_oversight.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        all_rows = list(iter_skill_entity_rows())
+        candidate_rows = oversight_candidate_rows()
+        suspicious_records = oversight_suspicious_records()
+        ctx.update({
+            "status_counts": review_status_counts(all_rows),
+            "candidate_rows": candidate_rows,
+            "recent_reviewed_rows": oversight_recent_reviewed_rows(),
+            "suspicious_records": suspicious_records,
+            "candidate_data_export_url": f"{reverse('data-export')}?label_status=candidate",
+            "reviewed_data_export_url": f"{reverse('data-export')}?label_status=reviewed",
+            "job_candidate_count": sum(1 for row in candidate_rows if row["source_type"] == "job"),
+            "module_candidate_count": sum(1 for row in candidate_rows if row["source_type"] == "module"),
+            "suspicious_job_count": sum(1 for record in suspicious_records if record["source_type"] == "job"),
+            "suspicious_module_count": sum(1 for record in suspicious_records if record["source_type"] == "module"),
+            "verification_task": TaskRecord.objects.filter(
+                run_name__startswith="Skill Verification",
+                status__in=["PENDING", "STARTED"],
+            ).order_by("-created_at").first(),
+        })
+        return ctx
+
+    def post(self, request, *args, **kwargs):
+        max_jobs = bounded_int(request.POST.get("max_jobs"), 10, 0, 50)
+        max_modules = bounded_int(request.POST.get("max_modules"), 10, 0, 50)
+        use_llm = request.POST.get("use_llm") == "1"
+        save_candidates = request.POST.get("save_candidates") == "1"
+        model = request.POST.get("model", "").strip() or getattr(settings, "OLLAMA_VERIFICATION_MODEL", "ministral-3:3b")
+        record = TaskRecord.objects.create(run_name=f"Skill Verification: {max_jobs} jobs / {max_modules} courses")
+        start_skill_verification_task(
+            record_id=record.id,
+            max_jobs=max_jobs,
+            max_modules=max_modules,
+            use_llm=use_llm,
+            save_candidates=save_candidates,
+            model=model,
+        )
+        messages.success(
+            request,
+            "Skill verification queued. You can keep working while it runs in Background Tasks.",
+        )
+        return redirect("task-list")
 
 
 class SkillVectorSpaceView(TemplateView):
@@ -785,13 +1138,8 @@ class SkillEntityUpdateView(View):
         source_id = bounded_int(request.POST.get("source_id"), 0, 0, 100000000)
         entity_id = request.POST.get("entity_id", "")
         chunk_id = request.POST.get("chunk_id", "")
-        updates = {
-            "skill": request.POST.get("skill", "").strip(),
-            "label": request.POST.get("label", "").strip() or "SKILL",
-            "tier": request.POST.get("tier", "").strip() or "reviewed",
-            "skill_type": request.POST.get("skill_type", "").strip() or "domain",
-        }
-        model = JobAdvert if source_type == "job" else Module if source_type == "module" else None
+        updates = request_entity_updates(request)
+        model = source_model_for_type(source_type)
         if not model or not source_id:
             messages.error(request, "Could not update skill label because the source row was invalid.")
             return redirect("data-export")
@@ -802,6 +1150,57 @@ class SkillEntityUpdateView(View):
             messages.error(request, "Could not find that skill chunk to update.")
         next_url = request.POST.get("next") or reverse("data-export")
         return redirect(next_url)
+
+
+class SkillEntityCreateView(View):
+    def post(self, request):
+        source_type = request.POST.get("source_type", "")
+        source_id = bounded_int(request.POST.get("source_id"), 0, 0, 100000000)
+        model = source_model_for_type(source_type)
+        if not model or not source_id:
+            messages.error(request, "Could not create skill evidence because the source row was invalid.")
+            return redirect("human-oversight")
+        obj = get_object_or_404(model, pk=source_id)
+        if create_entity_in_collection(obj, request_entity_updates(request)):
+            messages.success(request, "Skill evidence created.")
+        else:
+            messages.error(request, "Add a skill name before creating evidence.")
+        next_url = request.POST.get("next") or reverse("human-oversight")
+        return redirect(next_url)
+
+
+class SkillEntityDeleteView(View):
+    def post(self, request):
+        source_type = request.POST.get("source_type", "")
+        source_id = bounded_int(request.POST.get("source_id"), 0, 0, 100000000)
+        entity_id = request.POST.get("entity_id", "")
+        chunk_id = request.POST.get("chunk_id", "")
+        model = source_model_for_type(source_type)
+        if not model or not source_id:
+            messages.error(request, "Could not delete skill evidence because the source row was invalid.")
+            return redirect("data-export")
+        obj = get_object_or_404(model, pk=source_id)
+        if delete_entity_from_collection(obj, entity_id, chunk_id):
+            messages.success(request, "Skill evidence deleted.")
+        else:
+            messages.error(request, "Could not find that skill evidence row.")
+        next_url = request.POST.get("next") or reverse("data-export")
+        return redirect(next_url)
+
+
+class SkillEntityBulkApproveView(View):
+    def post(self, request):
+        source_type = request.POST.get("source_type", "all")
+        if source_type not in {"all", "job", "module"}:
+            messages.error(request, "Choose jobs, courses, or all candidates before approving.")
+            return redirect(request.POST.get("next") or reverse("human-oversight"))
+        approved, documents = approve_candidate_entities(source_type)
+        labels = {"all": "job and course", "job": "job", "module": "course"}
+        messages.success(
+            request,
+            f"Approved {approved} {labels[source_type]} candidate skill(s) across {documents} source record(s).",
+        )
+        return redirect(request.POST.get("next") or reverse("human-oversight"))
 
 
 class SkillEntityCsvExportView(View):
@@ -835,6 +1234,7 @@ def course_skill_training_rows():
         entities = [
             entity_row("module", module, entity, module.name, module.course.code or module.course.name)
             for entity in (module.skill_entities or module.skills_extracted or [])
+            if not isinstance(entity, dict) or entity.get("label_status") != "candidate"
         ]
         span_entities = [
             entity for entity in entities
@@ -1195,6 +1595,7 @@ class AnalysisResultsView(TemplateView):
                 GapResult.objects
                 .filter(run=sel)
                 .select_related("course", "job")
+                .prefetch_related("course__modules")
                 .order_by("-similarity_score")
             )
             if school_filter:
@@ -1212,7 +1613,7 @@ class AnalysisResultsView(TemplateView):
                 .values_list("university_name", flat=True)
                 .distinct()
             )
-            ctx["results"] = all_results[:300]
+            ctx["results"] = attach_result_skill_evidence(all_results[:300])
             ctx["job_skills"] = SkillMatrix.objects.filter(run=sel, source="jobs")[:20]
             ctx["course_skills"] = SkillMatrix.objects.filter(run=sel, source="courses")[:20]
             visual_data = build_results_visual_data(all_results, threshold)
@@ -1810,142 +2211,19 @@ class DashboardVisualCsvExportView(View):
 class TechnicalReportExportView(View):
     def get(self, request):
         try:
-            from docx import Document
-            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            from dashboard.researchpaper import REPORT_FILENAME, build_research_paper_docx
         except ImportError:
             return HttpResponse("python-docx is not installed.", status=500)
 
         run = latest_visual_run()
-        schools = list(
-            Course.objects
-            .exclude(university_name="")
-            .order_by("university_name")
-            .values_list("university_name", flat=True)
-            .distinct()
-        )
-        if Course.objects.filter(university_name="").exists():
-            schools.append("Unassigned school")
-
-        document = Document()
-        section = document.sections[0]
-        footer = section.footer.paragraphs[0]
-        footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        footer.add_run("Page ")
-        docx_add_field(footer, "PAGE", "1")
-
-        title = document.add_paragraph()
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        title_run = title.add_run("CurriculumMatch Technical Report")
-        title_run.bold = True
-        title_run.font.size = None
-        subtitle = document.add_paragraph()
-        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        subtitle.add_run("Curriculum-to-job-market alignment report").italic = True
-        document.add_paragraph(f"Generated: {timezone.localtime(timezone.now()).strftime('%d %B %Y %H:%M')}")
-        document.add_paragraph(f"Analysis run: {run.name if run else 'No completed analysis run available'}")
-        document.add_paragraph("Scope: all schools currently stored in the database.")
-        document.add_page_break()
-
-        document.add_heading("Table of Contents", level=1)
-        docx_add_field(document.add_paragraph(), 'TOC \\o "1-3" \\h \\z \\u')
-        document.add_paragraph("Note: in Microsoft Word, right-click the table above and choose Update Field to refresh page numbers.")
-        document.add_page_break()
-
-        document.add_heading("1. Introduction", level=1)
-        document.add_paragraph(
-            "This technical report summarises curriculum-to-job-market alignment using the courses, modules, "
-            "job adverts, extracted skills, semantic similarity scores, and school metadata currently stored in CurriculumMatch. "
-            "It is designed as an operational report, not a literature review."
-        )
-
-        document.add_heading("2. Methodology", level=1)
-        document.add_paragraph(
-            "The system parses curriculum and job evidence, extracts explicit skill terms, creates semantic vectors, "
-            "and compares each course against job adverts. The final score blends semantic similarity with explicit skill coverage."
-        )
-        document.add_paragraph("Cosine similarity: cos(A, B) = (A . B) / (||A|| * ||B||)")
-        document.add_paragraph("Course semantic score: mean(top-k module-to-job cosine scores)")
-        document.add_paragraph("Skill coverage: matched job skills / unique job skills")
-        document.add_paragraph("Final score: ((0.75 * semantic) + (0.25 * skill coverage)) / (0.75 + 0.25)")
-        document.add_paragraph(
-            "School Skill Matrix: demand evidence is the count of course-to-job comparisons where a refined skill appears as "
-            "matched or missing. Gap percentage is gap evidence divided by demand evidence. Coverage percentage is covered "
-            "evidence divided by demand evidence."
-        )
-        add_methodology_visuals_to_docx(document)
-
-        document.add_heading("3. Dashboard Snapshot", level=1)
         all_results = list(GapResult.objects.filter(run=run).select_related("course", "job")) if run else []
-        avg_score = round((sum(result.similarity_score for result in all_results) / len(all_results)) * 100, 1) if all_results else 0
-        add_key_value_table(document, [
-            ("Schools", len(schools)),
-            ("Courses", Course.objects.count()),
-            ("Job adverts", JobAdvert.objects.count()),
-            ("Course-job comparisons", len(all_results)),
-            ("Average final score", f"{avg_score}%"),
-        ])
-
-        document.add_heading("4. School Results", level=1)
-        for school in schools:
-            document.add_heading(school, level=2)
-            if school == "Unassigned school":
-                school_results = [result for result in all_results if not result.course.university_name]
-            else:
-                school_results = [result for result in all_results if result.course.university_name == school]
-            school_courses = Course.objects.filter(university_name="" if school == "Unassigned school" else school)
-            visual_data = build_results_visual_data(school_results, 55)
-            summary = visual_data["school_summaries"][0] if visual_data["school_summaries"] else None
-            add_key_value_table(document, [
-                ("Courses in database", school_courses.count()),
-                ("Analysed comparisons", len(school_results)),
-                ("Average score", f'{summary["avg_score"]}%' if summary else "No analysis data"),
-                ("Matched evidence", summary["matched_total"] if summary else 0),
-                ("Missing evidence", summary["missing_total"] if summary else 0),
-                ("Mismatch risk", "Yes" if summary and summary["mismatch"] else "No"),
-            ])
-
-            document.add_heading("Curriculum Recommendations", level=3)
-            for item in visual_data["school_recommendations"]:
-                document.add_paragraph(f'{item["school"]} ({item["score"]}%): {item["message"]}', style=None)
-
-            document.add_heading("School Skill Matrix", level=3)
-            add_skill_matrix_table(document, visual_data["skill_suggestion_matrix"])
-
-            document.add_heading("Course-to-Job Cross-tab Snapshot", level=3)
-            add_cross_tab_table(document, school_results)
-
-            document.add_heading("Top Course-to-Job Matches", level=3)
-            top_rows = [
-                [
-                    result.course.name[:48],
-                    result.job.title[:48],
-                    result.job.company or "",
-                    f"{result.similarity_percent}%",
-                    ", ".join((result.matched_skills or [])[:5]),
-                    ", ".join((result.missing_skills or [])[:5]),
-                ]
-                for result in sorted(school_results, key=lambda item: item.similarity_score, reverse=True)[:8]
-            ]
-            if top_rows:
-                add_simple_table(document, ["Course", "Job advert", "Company", "Score", "Matched", "Missing"], top_rows)
-            else:
-                document.add_paragraph("No analysed matches available for this school.")
-
-        document.add_heading("5. Appendix: Interpretation Notes", level=1)
-        document.add_paragraph(
-            "Scores and evidence counts are decision-support signals. Low alignment can indicate a genuine curriculum gap, "
-            "a job advert outside programme scope, thin module text, or terminology differences. Recommendations should be "
-            "reviewed by curriculum owners before module changes are made."
-        )
-
-        output = BytesIO()
-        document.save(output)
-        output.seek(0)
+        visual_data = build_results_visual_data(all_results, 55)
+        output = build_research_paper_docx(run, visual_data)
         response = HttpResponse(
             output.getvalue(),
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        response["Content-Disposition"] = 'attachment; filename="curriculummatch-technical-report.docx"'
+        response["Content-Disposition"] = f'attachment; filename="{REPORT_FILENAME}"'
         return response
 
 

@@ -1,5 +1,6 @@
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import TestCase, override_settings
@@ -240,6 +241,14 @@ class DashboardVisualDataTests(TestCase):
     def test_dashboard_renders_course_to_job_match_tiles(self):
         self.course.university_name = "University of Johannesburg"
         self.course.save(update_fields=["university_name"])
+        self.job.skills_extracted = ["strategy", "analytics", "communication"]
+        self.job.save(update_fields=["skills_extracted"])
+        Module.objects.create(
+            course=self.course,
+            name="Strategy Evidence",
+            content="Strategy leadership and communication",
+            skills_extracted=["strategy", "leadership", "communication"],
+        )
         run = AnalysisRun.objects.create(name="Run with matches", status="done")
         GapResult.objects.create(
             run=run,
@@ -286,6 +295,10 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "id=\"similarityCrosstab\"")
         self.assertContains(response, "network-canvas-wrap is-3d")
         self.assertContains(response, "Cosine similarity:")
+        self.assertContains(response, "Job evidence skills")
+        self.assertContains(response, "Course evidence skills")
+        self.assertContains(response, "analytics")
+        self.assertContains(response, "communication")
 
     def test_data_export_page_renders_skill_evidence_and_exports_csv(self):
         self.job.category = "Business Strategy"
@@ -559,10 +572,229 @@ class DashboardVisualDataTests(TestCase):
         self.assertEqual(self.job.skills_extracted, ["executive leadership"])
         self.assertEqual(self.job.skill_entities[0]["label_status"], "reviewed")
 
+    def test_candidate_skill_is_visible_but_not_counted_until_reviewed(self):
+        self.job.skill_entities = [{
+            "id": "skill-accounting",
+            "chunk_id": f"job-{self.job.id}-skill-accounting",
+            "skill": "accounting",
+            "label": "SKILL",
+            "tier": "explicit",
+            "skill_type": "business",
+            "source": "legacy",
+            "label_status": "legacy",
+        }, {
+            "id": "skill-sap-financial-accounting",
+            "chunk_id": f"job-{self.job.id}-candidate-skill-sap-financial-accounting",
+            "skill": "sap financial accounting",
+            "label": "SKILL",
+            "tier": "candidate",
+            "skill_type": "business",
+            "source": "ollama_verification",
+            "label_status": "candidate",
+        }]
+        self.job.skills_extracted = ["accounting"]
+        self.job.save(update_fields=["skill_entities", "skills_extracted"])
+
+        response = self.client.get(reverse("data-export"), {"label_status": "candidate"})
+
+        self.assertContains(response, "sap financial accounting")
+        self.assertEqual(current_extracted_skill_rows(JobAdvert), [{"skill": "accounting", "frequency": 1}])
+
+        self.client.post(reverse("skill-entity-update"), {
+            "source_type": "job",
+            "source_id": self.job.id,
+            "entity_id": "skill-sap-financial-accounting",
+            "chunk_id": f"job-{self.job.id}-candidate-skill-sap-financial-accounting",
+            "skill": "sap financial accounting",
+            "label": "SKILL",
+            "tier": "reviewed",
+            "skill_type": "business",
+        })
+
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.skills_extracted, ["accounting", "sap financial accounting"])
+        reviewed = [entity for entity in self.job.skill_entities if entity["skill"] == "sap financial accounting"][0]
+        self.assertEqual(reviewed["label_status"], "reviewed")
+
+    def test_human_oversight_page_surfaces_ai_candidates_and_checks(self):
+        self.job.title = "SAP Finance Analyst"
+        self.job.description = "SAP financial accounting, treasury solutions, reporting, workshops, governance, and controls."
+        self.job.skill_entities = [{
+            "id": "skill-sap-financial-accounting",
+            "chunk_id": f"job-{self.job.id}-candidate-skill-sap-financial-accounting",
+            "skill": "sap financial accounting",
+            "label": "SKILL",
+            "tier": "candidate",
+            "skill_type": "business",
+            "source": "ollama_verification",
+            "label_status": "candidate",
+        }]
+        self.job.save(update_fields=["title", "description", "skill_entities"])
+
+        response = self.client.get(reverse("human-oversight"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Human Oversight")
+        self.assertContains(response, "sap financial accounting")
+        self.assertContains(response, "AI Suggestions Waiting For Human Review")
+        self.assertContains(response, "Run Verification")
+
+    def test_human_oversight_run_checks_queues_background_verification(self):
+        with patch("dashboard.views.start_skill_verification_task") as start_task:
+            response = self.client.post(reverse("human-oversight"), {
+                "max_jobs": "4",
+                "max_modules": "5",
+                "model": "ministral-3:3b",
+                "use_llm": "1",
+                "save_candidates": "1",
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("task-list"))
+        task = TaskRecord.objects.get(run_name="Skill Verification: 4 jobs / 5 courses")
+        start_task.assert_called_once()
+        kwargs = start_task.call_args.kwargs
+        self.assertEqual(kwargs["record_id"], task.id)
+        self.assertEqual(kwargs["max_jobs"], 4)
+        self.assertEqual(kwargs["max_modules"], 5)
+        self.assertTrue(kwargs["use_llm"])
+        self.assertTrue(kwargs["save_candidates"])
+
+    def test_skill_entity_update_can_edit_evidence_text_and_metadata(self):
+        self.job.skill_entities = [{
+            "id": "skill-accounting",
+            "chunk_id": f"job-{self.job.id}-skill-accounting",
+            "skill": "accounting",
+            "label": "SKILL",
+            "tier": "explicit",
+            "skill_type": "business",
+            "source": "legacy",
+            "text": "accounting",
+            "confidence": 0.4,
+            "mention_count": 1,
+            "label_status": "candidate",
+        }]
+        self.job.save(update_fields=["skill_entities"])
+
+        response = self.client.post(reverse("skill-entity-update"), {
+            "source_type": "job",
+            "source_id": self.job.id,
+            "entity_id": "skill-accounting",
+            "chunk_id": f"job-{self.job.id}-skill-accounting",
+            "skill": "sap financial accounting",
+            "text": "SAP financial accounting in monthly reporting",
+            "label": "SKILL",
+            "tier": "reviewed",
+            "skill_type": "technical",
+            "source": "human_review",
+            "confidence": "0.92",
+            "mention_count": "3",
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.job.refresh_from_db()
+        entity = self.job.skill_entities[0]
+        self.assertEqual(entity["skill"], "sap financial accounting")
+        self.assertEqual(entity["text"], "SAP financial accounting in monthly reporting")
+        self.assertEqual(entity["source"], "human_review")
+        self.assertEqual(entity["confidence"], 0.92)
+        self.assertEqual(entity["mention_count"], 3)
+        self.assertEqual(self.job.skills_extracted, ["sap financial accounting"])
+
+    def test_skill_entity_create_and_delete_are_available_for_human_crud(self):
+        create_response = self.client.post(reverse("skill-entity-create"), {
+            "source_type": "job",
+            "source_id": self.job.id,
+            "skill": "treasury solutions",
+            "text": "Treasury solutions implementation",
+            "label": "SKILL",
+            "tier": "reviewed",
+            "skill_type": "business",
+            "source": "human",
+            "confidence": "1",
+            "mention_count": "1",
+        })
+
+        self.assertEqual(create_response.status_code, 302)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.skills_extracted, ["treasury solutions"])
+        entity = self.job.skill_entities[0]
+        self.assertEqual(entity["text"], "Treasury solutions implementation")
+
+        delete_response = self.client.post(reverse("skill-entity-delete"), {
+            "source_type": "job",
+            "source_id": self.job.id,
+            "entity_id": entity["id"],
+            "chunk_id": entity["chunk_id"],
+        })
+
+        self.assertEqual(delete_response.status_code, 302)
+        self.job.refresh_from_db()
+        self.assertEqual(self.job.skill_entities, [])
+        self.assertEqual(self.job.skills_extracted, [])
+
+    def test_bulk_approve_candidate_buttons_can_target_jobs_or_courses(self):
+        self.job.skill_entities = [{
+            "id": "skill-sap-financial-accounting",
+            "chunk_id": f"job-{self.job.id}-candidate-skill-sap-financial-accounting",
+            "skill": "sap financial accounting",
+            "label": "SKILL",
+            "tier": "candidate",
+            "skill_type": "business",
+            "source": "ollama_verification",
+            "label_status": "candidate",
+        }]
+        self.job.save(update_fields=["skill_entities"])
+        module = Module.objects.create(
+            course=self.course,
+            name="Strategy module",
+            content="Scenario planning",
+            skill_entities=[{
+                "id": "skill-scenario-planning",
+                "chunk_id": "module-candidate-skill-scenario-planning",
+                "skill": "scenario planning",
+                "label": "SKILL",
+                "tier": "candidate",
+                "skill_type": "business",
+                "source": "ollama_verification",
+                "label_status": "candidate",
+            }],
+        )
+
+        response = self.client.post(reverse("skill-entity-bulk-approve"), {
+            "source_type": "job",
+            "next": reverse("human-oversight"),
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.job.refresh_from_db()
+        module.refresh_from_db()
+        self.assertEqual(self.job.skill_entities[0]["label_status"], "reviewed")
+        self.assertEqual(self.job.skills_extracted, ["sap financial accounting"])
+        self.assertEqual(module.skill_entities[0]["label_status"], "candidate")
+        self.assertEqual(module.skills_extracted, [])
+
+        self.client.post(reverse("skill-entity-bulk-approve"), {
+            "source_type": "module",
+            "next": reverse("human-oversight"),
+        })
+
+        module.refresh_from_db()
+        self.assertEqual(module.skill_entities[0]["label_status"], "reviewed")
+        self.assertEqual(module.skills_extracted, ["scenario planning"])
+
     def test_results_page_renders_heatmap_scatter_and_suggestions(self):
         self.course.university_name = "University of Johannesburg"
         self.course.country = "South Africa"
         self.course.save(update_fields=["university_name", "country"])
+        self.job.skills_extracted = ["strategy", "analytics", "finance"]
+        self.job.save(update_fields=["skills_extracted"])
+        Module.objects.create(
+            course=self.course,
+            name="Strategy Evidence",
+            content="Strategy communication leadership",
+            skills_extracted=["strategy", "communication", "leadership"],
+        )
         run = AnalysisRun.objects.create(name="Run with visuals", status="done")
         GapResult.objects.create(
             run=run,
@@ -618,6 +850,9 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Coverage 0%")
         self.assertContains(response, "Demand evidence = covered evidence + gap evidence")
         self.assertContains(response, "Gap % = gap evidence / demand evidence")
+        self.assertContains(response, "Job Evidence Skills")
+        self.assertContains(response, "Course Evidence Skills")
+        self.assertContains(response, "communication")
         self.assertContains(response, "Export Report")
         csv_response = self.client.get(reverse("analysis-visual-export"), {"run": run.id, "school": "University of Johannesburg", "threshold": "55"})
         self.assertContains(csv_response, "visual,run,course_id,course,school,job_id,job")
@@ -660,6 +895,8 @@ class DashboardVisualDataTests(TestCase):
             matched_skills=["strategy"],
             missing_skills=["analytics"],
         )
+        SkillMatrix.objects.create(run=run, source="jobs", skill="analytics", frequency=4)
+        SkillMatrix.objects.create(run=run, source="courses", skill="strategy", frequency=2)
 
         response = self.client.get(reverse("technical-report-export"))
 
@@ -668,14 +905,16 @@ class DashboardVisualDataTests(TestCase):
             response["Content-Type"],
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
-        self.assertIn("curriculummatch-technical-report.docx", response["Content-Disposition"])
+        self.assertIn("curriculummatch-research-paper.docx", response["Content-Disposition"])
         self.assertGreater(len(response.content), 1000)
         document = Document(BytesIO(response.content))
         text = "\n".join(paragraph.text for paragraph in document.paragraphs)
-        self.assertIn("Methodology Visual Pipeline", text)
-        self.assertIn("Figure 1. End-to-end methodology pipeline.", text)
-        self.assertIn("Figure 2. Evidence funnel.", text)
-        self.assertIn("Figure 3. High-level graph legend.", text)
+        self.assertIn("CurriculumMatch Research Paper Export", text)
+        self.assertIn("3. Visual Evidence", text)
+        self.assertIn("Figure 1. Score Distribution", text)
+        self.assertIn("Figure 5. Skill Gap Matrix", text)
+        self.assertIn("5. Human Oversight and Learning", text)
+        self.assertIn("6. Limitations", text)
 
     def test_business_recommendations_refine_technical_skill_noise(self):
         insight = recommendation_skill_insight(

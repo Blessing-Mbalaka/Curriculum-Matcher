@@ -64,6 +64,38 @@ def _do_gap_analysis(run_name, record_id, max_jobs=None):
         _mark(record_id, "FAILURE", str(exc))
 
 
+def _do_skill_verification(record_id, max_jobs, max_modules, use_llm, save_candidates, model):
+    from analysis.verification import verify_database
+
+    _mark(record_id, "STARTED", "Preparing database skill verification...", 5)
+    progress_steps = [12, 25, 45, 65, 82]
+    progress_index = 0
+    try:
+        def report(message):
+            nonlocal progress_index
+            progress = progress_steps[min(progress_index, len(progress_steps) - 1)]
+            progress_index += 1
+            _mark(record_id, "STARTED", message, progress)
+
+        result = verify_database(
+            max_jobs=max_jobs,
+            max_modules=max_modules,
+            use_llm=use_llm,
+            save_candidates=save_candidates,
+            model=model,
+            progress_callback=report,
+        )
+        saved = result["summary"].get("candidate_skills_saved", 0)
+        notes = (
+            f"Verification complete. Checked {result['summary']['suspicious_records']} suspicious records; "
+            f"saved {saved} candidate skill(s)."
+        )
+        _mark(record_id, "SUCCESS", notes, 100)
+    except Exception as exc:
+        logger.error("Skill verification failed: %s", exc, exc_info=True)
+        _mark(record_id, "FAILURE", str(exc))
+
+
 def _do_csv_import(csv_bytes, record_id):
     from jobs.ingestion import import_from_csv
     _mark(record_id, "STARTED", "Importing CSV...", 10)
@@ -258,6 +290,11 @@ def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, r
 def run_gap_analysis_task(run_name="Analysis Run", record_id=None, max_jobs=None):
     """Start gap analysis in a background thread."""
     _run_in_thread(_do_gap_analysis, run_name, record_id, max_jobs)
+
+
+def start_skill_verification_task(record_id=None, max_jobs=10, max_modules=10, use_llm=True, save_candidates=True, model=None):
+    """Verify skill extraction in a background thread."""
+    _run_in_thread(_do_skill_verification, record_id, max_jobs, max_modules, use_llm, save_candidates, model)
 
 
 def import_csv_task(csv_bytes, record_id=None):

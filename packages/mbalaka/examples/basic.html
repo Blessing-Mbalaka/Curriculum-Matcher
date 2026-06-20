@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mbalaka Example</title>
+    <link rel="stylesheet" href="../dist/styles.css">
+    <style>
+      html, body { margin: 0; height: 100%; }
+      #skill-vector { height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="skill-vector"></div>
+    <script type="module">
+      import { createMbalakaVectorSpace } from "../dist/index.js";
+
+      createMbalakaVectorSpace({
+        container: "#skill-vector",
+        data: {
+          has_visual_data: true,
+          nodes: [
+            { id: "job-1", label: "Strategy Manager", full_label: "Strategy Manager", group: "job-root", sector: "Strategy and Management", description: "A role requiring strategic analysis and stakeholder leadership." },
+            { id: "course-1", label: "MBA Strategy", full_label: "MBA Strategy", group: "course-root", course_code: "MBA101", course_name: "Business Strategy", parent_label: "Business School" },
+            { id: "skill-strategy", label: "strategy", full_label: "strategy", group: "skill", skill: "strategy", skill_type: "business", sector: "Strategy and Management", source: "phrase_matcher", confidence: 0.92 },
+            { id: "skill-leadership", label: "leadership", full_label: "leadership", group: "skill", skill: "leadership", skill_type: "soft", sector: "Strategy and Management", source: "ner", confidence: 0.96 },
+            { id: "skill-data-analysis", label: "data analysis", full_label: "data analysis", group: "skill", skill: "data analysis", skill_type: "technical", sector: "Technology and Data", source: "bert-ner", confidence: 0.88 }
+          ],
+          edges: [
+            { source: "job-1", target: "skill-strategy", group: "evidence", value: 1, title: "Job evidence: strategy" },
+            { source: "job-1", target: "skill-leadership", group: "evidence", value: 1, title: "Job evidence: leadership" },
+            { source: "job-1", target: "skill-data-analysis", group: "evidence", value: 1, title: "Job evidence: data analysis" },
+            { source: "course-1", target: "skill-strategy", group: "evidence", value: 1, title: "Course evidence: strategy" },
+            { source: "course-1", target: "skill-leadership", group: "evidence", value: 1, title: "Course evidence: leadership" },
+            { source: "skill-strategy", target: "skill-leadership", group: "similarity", value: 2, similarity: 72, label: "72% cosine", title: "Cosine similarity: 72%" },
+            { source: "skill-strategy", target: "skill-data-analysis", group: "similarity", value: 1.4, similarity: 58, label: "58% cosine", title: "Cosine similarity: 58%" }
+          ]
+        }
+      });
+    </script>
+  </body>
+</html>

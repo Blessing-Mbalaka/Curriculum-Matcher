@@ -5,9 +5,9 @@ services:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: curriculum_matcher
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-jobs}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -17,12 +17,18 @@ services:
     build: .
     command: >
       sh -c "python manage.py migrate &&
+             python manage.py seed_docker_postgres &&
              python manage.py runserver 0.0.0.0:8000"
     volumes:
       - .:/app
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      USE_SQLITE: "False"
+      RUNNING_IN_DOCKER: "True"
+      DB_HOST: db
+      DB_PORT: 5432
     depends_on:
       - db
 

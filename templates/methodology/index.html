@@ -272,6 +272,15 @@
 .edge.medium { height:3px; background:#b95400; }
 .method-table { width:100%; font-size:13px; }
 .method-table td:first-child { font-weight:700; width:160px; }
+.limitations-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-top:14px; }
+.limitation-item {
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fbfaf6;
+  padding:14px;
+}
+.limitation-item b { display:block; font-size:13px; margin-bottom:5px; }
+.limitation-item span { display:block; color:var(--muted); font-size:12px; line-height:1.55; }
 .badge-line { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
 .visual-grid { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:12px; margin-top:18px; }
 .visual-tile {
@@ -426,7 +435,7 @@
 .matrix-cell.c { background:#f5a34f; color:#0b0b0b; font-weight:800; }
 .matrix-cell.d { background:#8c4d0c; color:#fff; font-weight:800; }
 @media (max-width:1100px) {
-  .method-hero, .method-grid, .method-two, .funnel-wrap { grid-template-columns:1fr; }
+  .method-hero, .method-grid, .method-two, .funnel-wrap, .limitations-grid { grid-template-columns:1fr; }
   .flow-map { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .flow-node::after { display:none; }
   .visual-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
@@ -580,6 +589,39 @@
     </div>
   </section>
 
+  <section class="card">
+    <div class="section-hd"><h2>Limitations and Governance</h2><span class="badge badge-gold">Human review required</span></div>
+    <p class="method-text">
+      CurriculumMatch is a decision-support system, not an automatic curriculum authority. Its outputs depend on the quality of job adverts, course text, extracted skills, and human review decisions.
+    </p>
+    <div class="limitations-grid">
+      <div class="limitation-item">
+        <b>Skill extraction is evidence-bound</b>
+        <span>The extractor can miss skills when job adverts use unusual phrasing, abbreviations, broad responsibilities, or implicit requirements. Thin descriptions can understate real market demand.</span>
+      </div>
+      <div class="limitation-item">
+        <b>LLM verification suggests, not decides</b>
+        <span>Ollama suggestions are stored as candidates. They should be inspected against the source evidence before approval because language models can overgeneralise or propose labels that are too broad.</span>
+      </div>
+      <div class="limitation-item">
+        <b>Human approval shapes future learning</b>
+        <span>Reviewed skills feed the dynamic lexicon and retraining datasets. Consistent review standards matter: approving noisy labels can make future extraction noisier.</span>
+      </div>
+      <div class="limitation-item">
+        <b>Embeddings capture similarity, not equivalence</b>
+        <span>A high semantic score means two texts are close in language and evidence, but it does not prove that learning outcomes, depth, assessment, or graduate competence are equivalent.</span>
+      </div>
+      <div class="limitation-item">
+        <b>Forecasts are exploratory</b>
+        <span>Skill forecasts use lightweight trends from filtered evidence counts. They are useful for scanning direction, but not for formal labour-market prediction.</span>
+      </div>
+      <div class="limitation-item">
+        <b>Dataset coverage can bias results</b>
+        <span>Adzuna/API coverage, uploaded CSVs, duplicated adverts, regional filters, and institutional course text availability all influence what the system sees and ranks.</span>
+      </div>
+    </div>
+  </section>
+
   <section class="method-grid">
     <div class="card">
       <div class="card-label">Input layer</div>
@@ -700,6 +742,39 @@
       <p class="method-text mt-4">
         CSV exports carry the same context columns, so offline analysis can reproduce the filtered view, including technical evidence IDs and entity IDs.
       </p>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd"><h2>How We Classify Skills</h2><span class="badge badge-gold">Simple taxonomy</span></div>
+    <p class="method-text">
+      In this system, a skill is any reusable capability, tool, method, or field-specific competence that a person can apply in work or study. We avoid treating every noun as a skill: the term must be useful for comparing what jobs ask for with what courses teach.
+    </p>
+    <div class="calc-list">
+      <div class="calc-row">
+        <b>Technical skills</b>
+        <span>These are tools, systems, data methods, software, platforms, or technical practices. Examples include Python, SQL, Power BI, cloud, automation, reporting, dashboards, software development, and machine learning.</span>
+      </div>
+      <div class="calc-row">
+        <b>Soft skills</b>
+        <span>These are transferable human capabilities used across many roles. Examples include communication, leadership, teamwork, negotiation, presentation, stakeholder relations, problem solving, and time management.</span>
+      </div>
+      <div class="calc-row">
+        <b>Business skills</b>
+        <span>These are management, commercial, finance, HR, operations, governance, risk, marketing, sales, compliance, procurement, and strategy capabilities that are especially relevant to business-school curricula.</span>
+      </div>
+      <div class="calc-row">
+        <b>Domain skills</b>
+        <span>These are specialised sector or subject-area phrases that look skill-like but do not clearly fall into technical, soft, or business buckets. They are kept as domain skills so a human reviewer can decide whether to refine them later.</span>
+      </div>
+      <div class="calc-row">
+        <b>Why the labels are reviewable</b>
+        <span>The first classification is rule-assisted: the system scores words in the skill phrase and nearby context against transparent keyword groups. A human can change the type during review, and that reviewed decision becomes the stronger learning signal.</span>
+      </div>
+    </div>
+    <div class="formula mt-4">
+      <div><b>Classification rule in plain English</b></div>
+      <div>Look at the skill phrase + evidence context. Count signals for technical, soft, and business categories. If no category is strong enough, keep it as domain. Then assign a tier such as tool, method, transferable, specialised, or candidate.</div>
     </div>
   </section>
 

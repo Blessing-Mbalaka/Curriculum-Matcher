@@ -180,6 +180,72 @@ class CourseFilterTests(TestCase):
         self.assertContains(response, "not a skill")
         self.assertContains(response, reverse("module-skill-delete", args=[course.modules.first().pk]))
 
+    def test_course_skill_audit_shows_full_evidence_context(self):
+        course = Course.objects.create(code="MBA305", name="MBA")
+        content = (
+            "Overview paragraph.\n\n"
+            "Students evaluate stakeholder mapping, executive communication, and "
+            "scenario planning in complex strategy projects.\n\n"
+            "Assessment paragraph."
+        )
+        Module.objects.create(
+            course=course,
+            name="Strategy Evidence",
+            content=content,
+            skills_extracted=["scenario planning"],
+            skill_entities=[{
+                "id": "skill-scenario-planning",
+                "chunk_id": "chunk-scenario-planning",
+                "skill": "scenario planning",
+                "source": "phrase_matcher",
+                "text": "scenario planning",
+                "start": content.index("scenario planning"),
+                "end": content.index("scenario planning") + len("scenario planning"),
+                "skill_type": "business",
+            }],
+        )
+
+        response = self.client.get(reverse("course-skill-audit", args=[course.pk]))
+
+        self.assertContains(response, "Students evaluate stakeholder mapping")
+        self.assertContains(response, "complex strategy projects")
+        self.assertContains(response, "name=\"skill_type\"")
+
+    def test_course_skill_audit_updates_skill_type_and_marks_reviewed(self):
+        course = Course.objects.create(code="MBA306", name="MBA")
+        module = Module.objects.create(
+            course=course,
+            name="Analytics",
+            content="Scenario planning supports strategic decisions.",
+            skills_extracted=["scenario planning"],
+            skill_entities=[{
+                "id": "skill-scenario-planning",
+                "chunk_id": "chunk-scenario-planning",
+                "skill": "scenario planning",
+                "label": "SKILL",
+                "tier": "candidate",
+                "skill_type": "domain",
+                "source": "phrase_matcher",
+            }],
+        )
+
+        response = self.client.post(reverse("course-skill-audit", args=[course.pk]), {
+            "module_id": module.pk,
+            "original_skill": "scenario planning",
+            "entity_id": "skill-scenario-planning",
+            "chunk_id": "chunk-scenario-planning",
+            "skill": "scenario planning",
+            "label": "SKILL",
+            "tier": "method",
+            "skill_type": "business",
+        })
+
+        self.assertRedirects(response, reverse("course-skill-audit", args=[course.pk]))
+        module.refresh_from_db()
+        self.assertEqual(module.skill_entities[0]["skill_type"], "business")
+        self.assertEqual(module.skill_entities[0]["tier"], "method")
+        self.assertEqual(module.skill_entities[0]["label_status"], "reviewed")
+
     def test_module_skill_delete_removes_skill_and_entity(self):
         course = Course.objects.create(code="MBA304", name="MBA")
         module = Module.objects.create(

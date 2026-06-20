@@ -17,6 +17,16 @@ class Command(BaseCommand):
         parser.add_argument("--synthetic", action="store_true")
         parser.add_argument("--per-skill", type=int, default=6)
         parser.add_argument("--save-synthetic", default=None)
+        parser.add_argument(
+            "--reviewed-only",
+            action="store_true",
+            help="Train from human-reviewed DB skill entities only.",
+        )
+        parser.add_argument(
+            "--courses-only",
+            action="store_true",
+            help="Use course module DB examples only.",
+        )
 
     def handle(self, *args, **options):
         try:
@@ -29,7 +39,10 @@ class Command(BaseCommand):
         if options["seed_json"]:
             seed_examples = _load_json_examples(options["seed_json"])
         else:
-            seed_examples = _load_db_examples()
+            seed_examples = _load_db_examples(
+                reviewed_only=options["reviewed_only"],
+                include_jobs=not options["courses_only"],
+            )
 
         if not seed_examples and not options["synthetic"]:
             raise CommandError(

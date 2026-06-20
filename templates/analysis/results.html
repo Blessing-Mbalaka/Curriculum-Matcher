@@ -450,6 +450,10 @@
                 <div><div class="card-label">Matched Skills</div><div class="chip-list">{% for sk in r.matched_skills %}<span class="chip chip-match">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></div>
                 <div><div class="card-label">Missing from Curriculum</div><div class="chip-list">{% for sk in r.missing_skills %}<span class="chip chip-miss">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">Full coverage</span>{% endfor %}</div></div>
               </div>
+              <div class="grid-2 mt-4">
+                <div><div class="card-label">Job Evidence Skills</div><div class="chip-list">{% for sk in r.job_display_skills %}<span class="chip">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">No job skill evidence stored.</span>{% endfor %}</div></div>
+                <div><div class="card-label">Course Evidence Skills</div><div class="chip-list">{% for sk in r.course_display_skills %}<span class="chip">{{ sk }}</span>{% empty %}<span class="text-muted text-sm">No course skill evidence stored.</span>{% endfor %}</div></div>
+              </div>
             </td>
           </tr>
           {% empty %}

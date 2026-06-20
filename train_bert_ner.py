@@ -227,11 +227,14 @@ def _bootstrap_django() -> bool:
         return False
 
 
-def _load_db_examples() -> List[Tuple[str, dict]]:
-    """Pull seed examples from the module DB via collect_training_examples."""
+def _load_db_examples(reviewed_only: bool = False, include_jobs: bool = True) -> List[Tuple[str, dict]]:
+    """Pull seed examples from reviewed/legacy module and job skill entities."""
     try:
-        from analysis.course_skill_ner import collect_training_examples
-        examples, skipped = collect_training_examples(reviewed_only=False)
+        from analysis.course_skill_ner import collect_skill_ner_training_examples
+        examples, skipped = collect_skill_ner_training_examples(
+            reviewed_only=reviewed_only,
+            include_jobs=include_jobs,
+        )
         logger.info("Loaded %d seed examples from DB (%d skipped).", len(examples), skipped)
         return examples
     except Exception as exc:
@@ -452,6 +455,16 @@ def parse_args() -> argparse.Namespace:
         help="Skip Django DB bootstrapping entirely.",
     )
     parser.add_argument(
+        "--reviewed-only",
+        action="store_true",
+        help="Use only human-reviewed skill entities as DB seed examples.",
+    )
+    parser.add_argument(
+        "--courses-only",
+        action="store_true",
+        help="Use only course module examples from the DB.",
+    )
+    parser.add_argument(
         "--synthetic",
         action="store_true",
         help="Generate additional synthetic examples with Gemini.",
@@ -480,7 +493,10 @@ if __name__ == "__main__":
         seed_examples = _load_json_examples(args.seed_json)
     elif not args.no_django:
         if _bootstrap_django():
-            seed_examples = _load_db_examples()
+            seed_examples = _load_db_examples(
+                reviewed_only=args.reviewed_only,
+                include_jobs=not args.courses_only,
+            )
         else:
             logger.warning(
                 "Django bootstrap failed. Use --seed-json or --no-django. "

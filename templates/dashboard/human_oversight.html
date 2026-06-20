@@ -1,0 +1,457 @@
+{% extends "base.html" %}
+{% block title %}Human Oversight - CurriculumMatch{% endblock %}
+{% block page_title %}Human Oversight{% endblock %}
+{% block topbar_actions %}
+  <a class="btn btn-outline" href="{{ candidate_data_export_url }}">Candidate Queue</a>
+  <a class="btn btn-outline" href="{{ reviewed_data_export_url }}">Reviewed Skills</a>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.oversight-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+.oversight-stat { background:#fff; border:1px solid var(--rule); border-radius:8px; padding:14px; }
+.oversight-stat-value { font-size:28px; font-weight:800; line-height:1; }
+.oversight-explainer {
+  display:grid;
+  grid-template-columns:minmax(220px,.75fr) minmax(0,1fr);
+  gap:14px;
+  align-items:start;
+  background:#fff;
+  border:1px solid var(--rule);
+  border-left:4px solid var(--uj-orange);
+  border-radius:8px;
+  padding:16px;
+  margin-bottom:16px;
+  box-shadow:0 12px 30px rgba(11,11,11,.04);
+}
+.oversight-explainer-title { font-weight:900; font-size:15px; }
+.oversight-explainer-copy { color:var(--muted); font-size:13px; line-height:1.55; }
+.oversight-steps { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.oversight-step { border:1px solid var(--rule); border-radius:8px; padding:10px; background:#fbfaf6; }
+.oversight-step b { display:block; font-size:12px; }
+.oversight-step span { display:block; color:var(--muted); font-size:11px; line-height:1.4; margin-top:3px; }
+.oversight-layout { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(320px,.8fr); gap:16px; align-items:start; }
+.oversight-panel { background:#fff; border:1px solid var(--rule); border-radius:8px; padding:18px; margin-bottom:16px; box-shadow:0 12px 30px rgba(11,11,11,.04); min-width:0; }
+.oversight-panel h2 { font-family:var(--syne); font-size:16px; margin:0 0 12px; }
+.oversight-panel .section-hd { align-items:flex-start; gap:12px; flex-wrap:wrap; }
+.oversight-panel .section-hd h2 { margin-bottom:0; }
+.verification-form { display:grid; grid-template-columns:repeat(2,minmax(110px,1fr)); gap:10px; align-items:end; }
+.verification-options { display:flex; flex-wrap:wrap; gap:10px; grid-column:1 / -1; }
+.check-option { display:inline-flex; align-items:center; gap:8px; padding:8px 10px; border:1px solid var(--rule); border-radius:8px; background:#fff; font-size:12px; font-weight:700; }
+.candidate-card { border:1px solid var(--rule); border-radius:8px; padding:14px; margin-bottom:12px; background:#fff; min-width:0; }
+.candidate-head { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; margin-bottom:10px; }
+.candidate-title { font-weight:800; font-size:15px; overflow-wrap:anywhere; }
+.candidate-meta { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.candidate-review-actions { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; align-items:center; }
+.candidate-edit { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; align-items:center; }
+.candidate-edit .form-control { padding:8px; font-size:12px; }
+.candidate-edit .btn { justify-content:center; }
+.manual-create { display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; align-items:center; }
+.manual-create .form-control { padding:8px; font-size:12px; }
+.bulk-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:flex-end; max-width:100%; }
+.bulk-actions form { display:inline-flex; }
+.oversight-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 16px; padding:6px; background:var(--soft); border:1px solid var(--rule); border-radius:8px; }
+.oversight-tab {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid transparent;
+  border-radius:6px;
+  background:transparent;
+  color:var(--muted);
+  padding:9px 12px;
+  font-weight:800;
+  font-size:13px;
+  cursor:pointer;
+}
+.oversight-tab.is-active { background:#fff; color:#111; border-color:var(--rule); box-shadow:0 8px 18px rgba(11,11,11,.05); }
+.oversight-tab-count { font-family:var(--mono); font-size:10px; padding:2px 7px; border-radius:999px; background:var(--uj-orange-soft); color:#111; }
+.tab-panel { display:none; }
+.tab-panel.is-active { display:block; }
+.tab-explainer { color:var(--muted); font-size:12px; line-height:1.55; margin-top:4px; max-width:860px; }
+.record-list { display:grid; gap:10px; }
+.record-item { border:1px solid var(--rule); border-radius:8px; padding:12px; background:#fff; min-width:0; }
+.record-title { font-weight:800; overflow-wrap:anywhere; }
+.record-warning { color:var(--rust); font-size:12px; margin-top:6px; }
+.learned-list { display:flex; flex-wrap:wrap; gap:6px; }
+.evidence-modal { position:fixed; inset:0; z-index:1200; display:none; align-items:center; justify-content:center; padding:22px; background:rgba(16,16,16,.56); }
+.evidence-modal.is-open { display:flex; }
+.evidence-dialog { width:min(760px, 100%); max-height:min(78vh, 760px); overflow:auto; background:#fff; border:1px solid var(--rule); border-radius:8px; box-shadow:0 28px 90px rgba(0,0,0,.28); }
+.evidence-dialog-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:16px 18px; border-bottom:1px solid var(--rule); }
+.evidence-dialog-title { font-weight:800; font-size:16px; overflow-wrap:anywhere; }
+.evidence-dialog-meta { color:var(--muted); font-size:12px; margin-top:3px; overflow-wrap:anywhere; }
+.evidence-dialog-body { padding:18px; color:#3d3934; font-size:13px; line-height:1.65; white-space:pre-wrap; overflow-wrap:anywhere; }
+.modal-close { width:32px; height:32px; border:1px solid var(--rule); border-radius:8px; background:#fff; cursor:pointer; font-size:18px; line-height:1; color:var(--muted); flex:0 0 auto; }
+.task-progress-track { height:8px; background:var(--soft); border-radius:999px; overflow:hidden; }
+.task-progress-fill { height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg, #111, var(--uj-orange)); transition:width .35s ease; }
+.task-progress-meta { display:flex; justify-content:space-between; margin-top:6px; font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+@media (max-width:980px) {
+  .oversight-grid, .oversight-layout, .verification-form, .candidate-edit, .manual-create, .oversight-explainer, .oversight-steps { grid-template-columns:1fr; }
+  .verification-options { grid-column:auto; }
+  .candidate-head { flex-direction:column; }
+  .bulk-actions { justify-content:flex-start; }
+  .oversight-tab { flex:1 1 calc(50% - 8px); justify-content:center; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="oversight-explainer">
+  <div>
+    <div class="card-label">Human-in-the-loop learning</div>
+    <div class="oversight-explainer-title">AI suggests; people decide what becomes knowledge.</div>
+    <p class="oversight-explainer-copy mt-2">
+      This page is the review layer between raw extraction and model learning. Suggested skills stay as candidates until a human approves, edits, rejects, or deletes them.
+    </p>
+  </div>
+  <div class="oversight-steps" aria-label="Human oversight workflow">
+    <div class="oversight-step"><b>1. Check</b><span>Run verification against jobs and courses with thin skill evidence.</span></div>
+    <div class="oversight-step"><b>2. Review</b><span>Inspect AI suggestions, source, type, and supporting evidence.</span></div>
+    <div class="oversight-step"><b>3. Approve</b><span>Approved rows become reviewed skills and enter extracted skill lists.</span></div>
+    <div class="oversight-step"><b>4. Learn</b><span>Reviewed skills feed the dynamic lexicon and retraining datasets.</span></div>
+  </div>
+</div>
+
+<div class="oversight-grid">
+  <div class="oversight-stat">
+    <div class="card-label">AI candidates</div>
+    <div class="oversight-stat-value">{{ status_counts.candidate }}</div>
+    <div class="stat-sub">{{ job_candidate_count }} job / {{ module_candidate_count }} course</div>
+  </div>
+  <div class="oversight-stat">
+    <div class="card-label">Reviewed learned</div>
+    <div class="oversight-stat-value">{{ status_counts.reviewed }}</div>
+    <div class="stat-sub">Feeds lexicon and retraining</div>
+  </div>
+  <div class="oversight-stat">
+    <div class="card-label">Needs checks</div>
+    <div class="oversight-stat-value">{{ suspicious_records|length }}</div>
+    <div class="stat-sub">{{ suspicious_job_count }} job / {{ suspicious_module_count }} course</div>
+  </div>
+  <div class="oversight-stat">
+    <div class="card-label">All evidence</div>
+    <div class="oversight-stat-value">{{ status_counts.total }}</div>
+    <div class="stat-sub">{{ status_counts.machine }} machine / {{ status_counts.legacy }} legacy</div>
+  </div>
+</div>
+
+<div class="oversight-tabs" role="tablist" aria-label="Human oversight sections">
+  <button class="oversight-tab is-active" type="button" role="tab" aria-selected="true" data-tab-target="candidates">
+    Review Queue <span class="oversight-tab-count">{{ candidate_rows|length }}</span>
+  </button>
+  <button class="oversight-tab" type="button" role="tab" aria-selected="false" data-tab-target="checks">
+    Database Checks <span class="oversight-tab-count">{{ suspicious_records|length }}</span>
+  </button>
+  <button class="oversight-tab" type="button" role="tab" aria-selected="false" data-tab-target="verify">
+    Run Verification
+  </button>
+  <button class="oversight-tab" type="button" role="tab" aria-selected="false" data-tab-target="learned">
+    Learned Skills <span class="oversight-tab-count">{{ recent_reviewed_rows|length }}</span>
+  </button>
+</div>
+
+<div class="tab-panel" data-tab-panel="verify">
+<div class="oversight-panel">
+  <div class="section-hd">
+    <div>
+      <h2>Run Verification</h2>
+      <div class="tab-explainer">Queues a background database check. When Ollama is enabled, it reads suspicious jobs and courses and proposes missing skills. When Save AI candidates is enabled, those suggestions are stored as candidates for human review instead of being trusted automatically.</div>
+    </div>
+  </div>
+  <form class="verification-form" method="post">
+    {% csrf_token %}
+    <div>
+      <label class="form-label" for="maxJobs">Jobs to check</label>
+      <input class="form-control" id="maxJobs" type="number" name="max_jobs" min="0" max="50" value="10">
+    </div>
+    <div>
+      <label class="form-label" for="maxModules">Courses to check</label>
+      <input class="form-control" id="maxModules" type="number" name="max_modules" min="0" max="50" value="10">
+    </div>
+    <div>
+      <label class="form-label" for="modelName">Ollama model</label>
+      <input class="form-control" id="modelName" name="model" value="ministral-3:3b">
+    </div>
+    <button class="btn btn-primary" type="submit">Queue Checks</button>
+    <div class="verification-options">
+      <label class="check-option"><input type="checkbox" name="use_llm" value="1" checked> Use Ollama suggestions</label>
+      <label class="check-option"><input type="checkbox" name="save_candidates" value="1" checked> Save AI candidates</label>
+    </div>
+  </form>
+  {% if verification_task %}
+  <div class="mt-4" data-status-url="{% url 'task-status-api' verification_task.id %}" id="verificationTaskStatus">
+    <div class="flex gap-2">
+      <span class="badge badge-blue" data-task-status>{{ verification_task.status }}</span>
+      <span class="text-sm text-muted" data-task-notes>{{ verification_task.notes|default:"Queued" }}</span>
+    </div>
+    <div class="task-progress-track mt-2">
+      <div class="task-progress-fill" data-task-progress-fill style="width:{{ verification_task.progress }}%;"></div>
+    </div>
+    <div class="task-progress-meta">
+      <span data-task-progress-label>{{ verification_task.progress }}%</span>
+      <a href="{% url 'task-list' %}">Open Background Tasks</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+</div>
+
+<div class="tab-panel is-active" data-tab-panel="candidates">
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>AI Suggestions Waiting For Human Review</h2>
+          <div class="tab-explainer">Candidate rows are not yet part of the trusted skill matrix. Edit the skill name, evidence text, tier, or skill type before approving. Rejecting marks the row as excluded; deleting removes the row from the stored evidence.</div>
+        </div>
+        <div class="bulk-actions">
+          <span class="badge badge-gold">{{ candidate_rows|length }} shown</span>
+          <form method="post" action="{% url 'skill-entity-bulk-approve' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+            <input type="hidden" name="source_type" value="all">
+            <button class="btn btn-primary btn-sm" type="submit">Approve All</button>
+          </form>
+          <form method="post" action="{% url 'skill-entity-bulk-approve' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+            <input type="hidden" name="source_type" value="job">
+            <button class="btn btn-outline btn-sm" type="submit">Approve Job Skills</button>
+          </form>
+          <form method="post" action="{% url 'skill-entity-bulk-approve' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+            <input type="hidden" name="source_type" value="module">
+            <button class="btn btn-outline btn-sm" type="submit">Approve Course Skills</button>
+          </form>
+        </div>
+      </div>
+      {% for row in candidate_rows %}
+      <div class="candidate-card">
+        <div class="candidate-head">
+          <div>
+            <div class="candidate-title">{{ row.skill }}</div>
+            <div class="candidate-meta">{{ row.source_type|title }} {{ row.source_id }} - {{ row.source_label }}</div>
+          </div>
+          <div class="chip-list">
+            <span class="chip">{{ row.skill_type }}</span>
+            <span class="chip">{{ row.source }}</span>
+          </div>
+        </div>
+        <div class="candidate-review-actions">
+          {% if row.context %}
+          <button
+            class="btn btn-outline btn-sm"
+            type="button"
+            data-evidence-open
+            data-title="{{ row.skill|escape }}"
+            data-meta="{{ row.source_type|title }} {{ row.source_id }} - {{ row.source_label|escape }}"
+            data-context="{{ row.context|escape }}"
+          >View Evidence</button>
+          {% endif %}
+          <span class="badge badge-gray">{{ row.label_status }}</span>
+        </div>
+        <form class="candidate-edit" method="post" action="{% url 'skill-entity-update' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+          <input type="hidden" name="source_type" value="{{ row.source_type }}">
+          <input type="hidden" name="source_id" value="{{ row.source_id }}">
+          <input type="hidden" name="entity_id" value="{{ row.id }}">
+          <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
+          <input class="form-control" name="skill" value="{{ row.skill }}" aria-label="Skill">
+          <input class="form-control" name="text" value="{{ row.text }}" aria-label="Evidence text">
+          <select class="form-control" name="tier" aria-label="Tier">
+            <option value="reviewed" selected>reviewed</option>
+            <option value="explicit">explicit</option>
+            <option value="candidate">candidate</option>
+            <option value="exclude">exclude</option>
+          </select>
+          <select class="form-control" name="skill_type" aria-label="Skill type">
+            <option value="business" {% if row.skill_type == "business" %}selected{% endif %}>business</option>
+            <option value="technical" {% if row.skill_type == "technical" %}selected{% endif %}>technical</option>
+            <option value="soft" {% if row.skill_type == "soft" %}selected{% endif %}>soft</option>
+            <option value="domain" {% if row.skill_type == "domain" %}selected{% endif %}>domain</option>
+            <option value="exclude">exclude</option>
+          </select>
+          <input type="hidden" name="source" value="{{ row.source }}">
+          <input type="hidden" name="confidence" value="{{ row.confidence }}">
+          <button class="btn btn-primary btn-sm" name="label" value="SKILL" type="submit">Approve</button>
+          <button class="btn btn-danger btn-sm" name="label" value="exclude" type="submit">Reject</button>
+        </form>
+        <form method="post" action="{% url 'skill-entity-delete' %}" class="mt-2">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+          <input type="hidden" name="source_type" value="{{ row.source_type }}">
+          <input type="hidden" name="source_id" value="{{ row.source_id }}">
+          <input type="hidden" name="entity_id" value="{{ row.id }}">
+          <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
+          <button class="btn btn-outline btn-sm" type="submit">Delete Row</button>
+        </form>
+      </div>
+      {% empty %}
+      <div class="empty-text">No AI skill candidates are waiting right now.</div>
+      {% endfor %}
+    </div>
+</div>
+
+<div class="tab-panel" data-tab-panel="checks">
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>Database Checks</h2>
+          <div class="tab-explainer">These records look suspicious because they have enough text to contain multiple skills, but the extractor stored very few. Use Open Evidence for a deeper look or add a missing skill manually when the evidence is clear.</div>
+        </div>
+        <span class="badge badge-gray">Thin extraction</span>
+      </div>
+      <div class="record-list">
+        {% for record in suspicious_records %}
+        <div class="record-item">
+          <div class="record-title">{{ record.title }}</div>
+          <div class="candidate-meta">{{ record.source_type|title }} {{ record.source_id }} - {{ record.parent }}</div>
+          <div class="record-warning">{{ record.warnings|join:" " }}</div>
+          <div class="chip-list mt-2">
+            {% for skill in record.stored_skills %}
+            <span class="chip">{{ skill }}</span>
+            {% empty %}
+            <span class="chip">no stored skills</span>
+            {% endfor %}
+          </div>
+          <a class="btn btn-outline btn-sm mt-2" href="{{ record.review_url }}">Open Evidence</a>
+          <form class="manual-create" method="post" action="{% url 'skill-entity-create' %}">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{% url 'human-oversight' %}">
+            <input type="hidden" name="source_type" value="{{ record.source_type }}">
+            <input type="hidden" name="source_id" value="{{ record.source_id }}">
+            <input class="form-control" name="skill" placeholder="Add missing skill" aria-label="Skill">
+            <input class="form-control" name="text" placeholder="Evidence text" aria-label="Evidence text">
+            <select class="form-control" name="tier" aria-label="Tier">
+              <option value="reviewed">reviewed</option>
+              <option value="explicit">explicit</option>
+              <option value="candidate">candidate</option>
+            </select>
+            <select class="form-control" name="skill_type" aria-label="Skill type">
+              <option value="business">business</option>
+              <option value="technical">technical</option>
+              <option value="soft">soft</option>
+              <option value="domain">domain</option>
+            </select>
+            <button class="btn btn-primary btn-sm" name="label" value="SKILL" type="submit">Add</button>
+          </form>
+        </div>
+        {% empty %}
+        <div class="empty-text">No suspicious job or course records found by the current checks.</div>
+        {% endfor %}
+      </div>
+    </div>
+</div>
+
+<div class="tab-panel" data-tab-panel="learned">
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>Recently Learned</h2>
+          <div class="tab-explainer">These reviewed skills are the trusted feedback signal. They can be reused by the dynamic skill lexicon and included in future model retraining datasets.</div>
+        </div>
+        <span class="badge badge-green">{{ recent_reviewed_rows|length }}</span>
+      </div>
+      <div class="learned-list">
+        {% for row in recent_reviewed_rows %}
+        <span class="chip chip-match">{{ row.skill }}</span>
+        {% empty %}
+        <div class="empty-text">No reviewed skills yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+</div>
+<div class="evidence-modal" id="evidenceModal" aria-hidden="true">
+  <div class="evidence-dialog" role="dialog" aria-modal="true" aria-labelledby="evidenceModalTitle">
+    <div class="evidence-dialog-head">
+      <div>
+        <div class="evidence-dialog-title" id="evidenceModalTitle">Evidence</div>
+        <div class="evidence-dialog-meta" id="evidenceModalMeta"></div>
+      </div>
+      <button class="modal-close" type="button" data-evidence-close aria-label="Close evidence">&times;</button>
+    </div>
+    <div class="evidence-dialog-body" id="evidenceModalBody"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const oversightTabs = document.querySelectorAll('[data-tab-target]');
+const oversightPanels = document.querySelectorAll('[data-tab-panel]');
+function activateOversightTab(name, updateHash = true) {
+  const fallback = 'candidates';
+  const targetName = document.querySelector(`[data-tab-panel="${name}"]`) ? name : fallback;
+  oversightTabs.forEach(tab => {
+    const active = tab.dataset.tabTarget === targetName;
+    tab.classList.toggle('is-active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  oversightPanels.forEach(panel => {
+    panel.classList.toggle('is-active', panel.dataset.tabPanel === targetName);
+  });
+  if (updateHash) {
+    history.replaceState(null, '', `#${targetName}`);
+  }
+}
+oversightTabs.forEach(tab => {
+  tab.addEventListener('click', () => activateOversightTab(tab.dataset.tabTarget));
+});
+if (window.location.hash) {
+  activateOversightTab(window.location.hash.replace('#', ''), false);
+}
+
+const evidenceModal = document.getElementById('evidenceModal');
+const evidenceTitle = document.getElementById('evidenceModalTitle');
+const evidenceMeta = document.getElementById('evidenceModalMeta');
+const evidenceBody = document.getElementById('evidenceModalBody');
+function closeEvidenceModal() {
+  if (!evidenceModal) return;
+  evidenceModal.classList.remove('is-open');
+  evidenceModal.setAttribute('aria-hidden', 'true');
+}
+document.querySelectorAll('[data-evidence-open]').forEach(button => {
+  button.addEventListener('click', () => {
+    evidenceTitle.textContent = button.dataset.title || 'Evidence';
+    evidenceMeta.textContent = button.dataset.meta || '';
+    evidenceBody.textContent = button.dataset.context || 'No context available.';
+    evidenceModal.classList.add('is-open');
+    evidenceModal.setAttribute('aria-hidden', 'false');
+  });
+});
+document.querySelectorAll('[data-evidence-close]').forEach(button => {
+  button.addEventListener('click', closeEvidenceModal);
+});
+evidenceModal?.addEventListener('click', event => {
+  if (event.target === evidenceModal) closeEvidenceModal();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') closeEvidenceModal();
+});
+</script>
+{% if verification_task %}
+<script>
+function pollVerificationTask() {
+  const panel = document.getElementById('verificationTaskStatus');
+  if (!panel) return;
+  fetch(panel.dataset.statusUrl, { headers:{ 'Accept':'application/json' } })
+    .then(response => response.json())
+    .then(data => {
+      const pct = Math.max(0, Math.min(100, Number(data.progress) || 0));
+      panel.querySelector('[data-task-status]').textContent = data.status;
+      panel.querySelector('[data-task-notes]').textContent = data.notes || 'Working';
+      panel.querySelector('[data-task-progress-fill]').style.width = `${pct}%`;
+      panel.querySelector('[data-task-progress-label]').textContent = `${pct}%`;
+      if (data.status === 'PENDING' || data.status === 'STARTED') {
+        setTimeout(pollVerificationTask, 1500);
+      } else {
+        setTimeout(() => location.reload(), 1200);
+      }
+    })
+    .catch(() => setTimeout(pollVerificationTask, 3000));
+}
+pollVerificationTask();
+</script>
+{% endif %}
+{% endblock %}

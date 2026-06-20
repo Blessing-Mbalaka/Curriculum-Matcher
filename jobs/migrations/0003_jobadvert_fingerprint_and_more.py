@@ -43,7 +43,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='jobadvert',
             name='fingerprint',
-            field=models.CharField(blank=True, db_index=True, max_length=64),
+            field=models.CharField(blank=True, max_length=64),
         ),
         migrations.RunPython(backfill_fingerprints, migrations.RunPython.noop),
         migrations.AlterField(

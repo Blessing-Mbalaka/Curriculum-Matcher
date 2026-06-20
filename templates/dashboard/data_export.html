@@ -35,7 +35,7 @@
 .source-tile-sub { display:block; color:var(--muted); font-size:12px; margin-top:3px; }
 .source-tile.active .source-tile-sub { color:rgba(255,255,255,.68); }
 .source-tile-count { font-size:30px; font-weight:800; line-height:1; }
-.data-filters { display:grid; grid-template-columns:repeat(5,minmax(150px,1fr)) auto; gap:10px; margin-bottom:16px; }
+.data-filters { display:grid; grid-template-columns:repeat(6,minmax(140px,1fr)) auto; gap:10px; margin-bottom:16px; }
 .skill-plot-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr); gap:12px; margin-bottom:16px; }
 .skill-plot { min-height:320px; border:1px solid var(--rule); border-radius:8px; background:#fff; }
 .network-legend {
@@ -102,8 +102,9 @@
 }
 @keyframes vectorSpin { to { transform:rotate(360deg); } }
 .entity-table td { vertical-align:top; }
-.entity-edit { display:grid; grid-template-columns:minmax(150px,1.2fr) minmax(90px,.7fr) minmax(90px,.7fr) minmax(100px,.8fr) auto; gap:6px; align-items:center; min-width:620px; }
+.entity-edit { display:grid; grid-template-columns:minmax(160px,1.1fr) minmax(150px,1fr) repeat(5,minmax(86px,.6fr)) auto; gap:6px; align-items:center; min-width:980px; }
 .entity-edit .form-control { padding:7px 8px; font-size:12px; }
+.entity-actions { display:flex; gap:6px; margin-top:8px; justify-content:flex-end; }
 .entity-id { font-family:var(--mono); font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
 .entity-source { max-width:260px; }
 .entity-source strong { display:block; color:var(--ink); font-size:12px; }
@@ -198,6 +199,12 @@
       <option value="">All job titles</option>
       {% for title in job_titles %}
       <option value="{{ title }}" {% if current_job_title == title %}selected{% endif %}>{{ title }}</option>
+      {% endfor %}
+    </select>
+    <select class="form-control" name="label_status" aria-label="Review status">
+      <option value="">All review states</option>
+      {% for label_status in label_statuses %}
+      <option value="{{ label_status }}" {% if current_label_status == label_status %}selected{% endif %}>{{ label_status }}</option>
       {% endfor %}
     </select>
     <input class="form-control" name="q" value="{{ current_q }}" placeholder="Search skill, evidence id, entity id, or source">
@@ -356,6 +363,7 @@
             <input type="hidden" name="entity_id" value="{{ row.id }}">
             <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
             <input class="form-control" name="skill" value="{{ row.skill }}" aria-label="Skill">
+            <input class="form-control" name="text" value="{{ row.text }}" aria-label="Evidence text">
             <input class="form-control" name="label" value="{{ row.label }}" aria-label="NER label">
             <select class="form-control" name="tier" aria-label="Tier">
               <option value="explicit" {% if row.tier == "explicit" %}selected{% endif %}>explicit</option>
@@ -370,8 +378,22 @@
               <option value="business" {% if row.skill_type == "business" %}selected{% endif %}>business</option>
               <option value="exclude" {% if row.skill_type == "exclude" %}selected{% endif %}>exclude</option>
             </select>
+            <input class="form-control" name="source" value="{{ row.source }}" aria-label="Extractor source">
+            <input class="form-control" name="confidence" value="{{ row.confidence }}" aria-label="Confidence">
+            <input class="form-control" name="mention_count" value="{{ row.mention_count }}" aria-label="Mentions">
             <button class="btn btn-outline btn-sm" type="submit">Save</button>
           </form>
+          <div class="entity-actions">
+            <form method="post" action="{% url 'skill-entity-delete' %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <input type="hidden" name="source_type" value="{{ row.source_type }}">
+              <input type="hidden" name="source_id" value="{{ row.source_id }}">
+              <input type="hidden" name="entity_id" value="{{ row.id }}">
+              <input type="hidden" name="chunk_id" value="{{ row.chunk_id }}">
+              <button class="btn btn-danger btn-sm" type="submit">Delete</button>
+            </form>
+          </div>
         </td>
       </tr>
       {% empty %}
