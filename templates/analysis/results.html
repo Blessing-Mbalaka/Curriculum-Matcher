@@ -4,6 +4,7 @@
 {% block topbar_actions %}
   {% if selected_run %}
   <a href="{% url 'analysis-visual-export' %}?run={{ selected_run.id }}{% if selected_school %}&school={{ selected_school|urlencode }}{% endif %}&threshold={{ threshold }}" class="btn btn-outline">Download Visual CSV</a>
+  <a href="{% url 'technical-report-visual-archive' selected_run.id %}" class="btn btn-outline">Download Report Visuals</a>
   {% endif %}
   <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm" data-results-url="{% url 'analysis-results' %}">
@@ -72,7 +73,16 @@
   color:var(--muted);
   font-size:12px;
 }
-.heatmap-ramp { flex:1; height:10px; border-radius:999px; background:linear-gradient(90deg,#f1f3f5,#fff2df,#ffbd80,#f58220,#0b0b0b); }
+.heatmap-ramp { flex:1; height:10px; border-radius:999px; background:linear-gradient(90deg,#3f6fa9,#edf1f5,#b92f24); }
+.correlation-title { font-family:var(--display); font-size:32px; line-height:1.08; font-weight:900; color:#0b0b0b; margin:0; }
+.correlation-subtitle { margin-top:10px; color:#333; font-size:20px; font-weight:500; }
+.correlation-meta { color:var(--muted); font-size:12px; margin-top:8px; }
+.role-divergence-list { display:grid; gap:28px; }
+.role-divergence-panel { min-height:320px; border-top:1px solid var(--rule); padding-top:18px; }
+.role-divergence-panel:first-child { border-top:0; padding-top:0; }
+.role-divergence-empty { display:grid; place-items:center; min-height:360px; color:var(--muted); text-align:center; }
+.role-divergence-controls { display:grid; grid-template-columns:minmax(220px,1fr) 160px; gap:10px; align-items:end; margin:14px 0 20px; }
+.role-divergence-count { color:var(--muted); font-size:12px; margin:-8px 0 16px; }
 .job-index-legend {
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
@@ -212,7 +222,8 @@
 
   <div class="results-tabs">
     <button class="results-tab active" type="button" data-tab="visualsTab">Visuals</button>
-    <button class="results-tab" type="button" data-tab="heatmapTab">Heatmap</button>
+    <button class="results-tab" type="button" data-tab="heatmapTab">Skill Correlation Heatmap</button>
+    <button class="results-tab" type="button" data-tab="roleDivergenceTab">Role Skill Divergence</button>
     <button class="results-tab" type="button" data-tab="suggestionsTab">Suggestions</button>
     <button class="results-tab" type="button" data-tab="matrixTab">Matrix</button>
   </div>
@@ -302,55 +313,66 @@
     <div class="card">
       <div class="section-hd">
         <div>
-          <h2>Course-to-Job Gap Heatmap</h2>
-          <div class="heatmap-note">Use Ranked jobs for many adverts. Use Matrix when you need a course-by-job grid. Colours always show match strength.</div>
+          <h2 class="correlation-title">Correlation Structure Between Skills</h2>
+          <div class="correlation-subtitle">Pearson correlation coefficients across role requirement profiles</div>
+          <div class="correlation-meta">{{ skill_correlation_matrix.profile_count }} role requirement profile{{ skill_correlation_matrix.profile_count|pluralize }} analysed from the current results filter.</div>
         </div>
         <div class="flex gap-2">
           <span class="badge badge-gold">Plotly</span>
           <span class="graph-insight">
-            <button class="graph-insight-btn" type="button" aria-label="Explain course-to-job gap heatmap"></button>
+            <button class="graph-insight-btn" type="button" aria-label="Explain skill correlation heatmap"></button>
             <span class="graph-insight-popover">
-              <span class="graph-insight-title">Gap visual reading</span>
-              <span class="graph-insight-body">Ranked jobs is easier when there are many job names: each dot is one job match, the x-position is match %, colour is match strength, and dot size grows when more job skills are missing. Matrix view uses compact J1, J2 labels on the axis and lists the full job names underneath. The number shown in hover is the match percentage, not a count.</span>
+              <span class="graph-insight-title">Correlation reading</span>
+              <span class="graph-insight-body">Each cell compares two skills across job role profiles. Red positive values mean the skills tend to appear together; blue negative values mean one appears when the other is absent. White values are weak or near-zero relationships.</span>
             </span>
           </span>
         </div>
       </div>
-      <div class="heatmap-controls">
-        <div>
-          <label class="form-label" for="gapVisualMode">Visual type</label>
-          <select class="form-control" id="gapVisualMode">
-            <option value="ranked">Ranked jobs</option>
-            <option value="matrix">Matrix heatmap</option>
-          </select>
-        </div>
-        <div>
-          <label class="form-label" for="gapCourseFilter">Course</label>
-          <select class="form-control" id="gapCourseFilter">
-            <option value="">All courses</option>
-          </select>
-        </div>
-        <div>
-          <label class="form-label" for="gapTopLimit">Show</label>
-          <select class="form-control" id="gapTopLimit">
-            <option value="25">Top 25</option>
-            <option value="50">Top 50</option>
-            <option value="100">Top 100</option>
-            <option value="500">All</option>
-          </select>
-        </div>
-        <label class="heatmap-check">
-          <input type="checkbox" id="gapShowLabels">
-          Show matrix job labels
-        </label>
-      </div>
       <div class="heatmap-colour-legend">
-        <span>Weak match 0%</span>
+        <span>Negative -1.00</span>
         <span class="heatmap-ramp" aria-hidden="true"></span>
-        <span>Strong match 100%</span>
+        <span>Positive 1.00</span>
       </div>
       <div class="plotly-heatmap-box" id="gapPlotlyHeatmap"></div>
-      <div class="job-index-legend mt-4" id="gapJobLegend" aria-label="Job label legend"></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="roleDivergenceTab">
+    <div class="card">
+      <div class="section-hd">
+        <div>
+          <h2 class="correlation-title">Role Skill Divergence</h2>
+          <div class="correlation-subtitle">Diverging bar chart of skill emphasis against the job-market baseline</div>
+          <div class="correlation-meta">{{ role_skill_divergence.profile_count }} role requirement profile{{ role_skill_divergence.profile_count|pluralize }} analysed from the current results filter.</div>
+        </div>
+        <div class="flex gap-2">
+          <span class="badge badge-gold">Diverging bar chart</span>
+          <span class="graph-insight">
+            <button class="graph-insight-btn" type="button" aria-label="Explain role skill divergence"></button>
+            <span class="graph-insight-popover">
+              <span class="graph-insight-title">Divergence reading</span>
+              <span class="graph-insight-body">Each role profile is compared with the overall job-market baseline. Red bars show skills that are more prominent for that role; blue bars show skills that are less prominent than the baseline.</span>
+            </span>
+          </span>
+        </div>
+      </div>
+      <div class="role-divergence-controls">
+        <div>
+          <label class="form-label" for="roleDivergenceSearch">Search role</label>
+          <input class="form-control" id="roleDivergenceSearch" type="search" placeholder="Search job title or role profile">
+        </div>
+        <div>
+          <label class="form-label" for="roleDivergenceLimit">Show</label>
+          <select class="form-control" id="roleDivergenceLimit">
+            <option value="10">Top 10</option>
+            <option value="25" selected>Top 25</option>
+            <option value="50">Top 50</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+      </div>
+      <div class="role-divergence-count" id="roleDivergenceCount"></div>
+      <div class="role-divergence-list" id="roleDivergencePlots"></div>
     </div>
   </div>
 
@@ -568,11 +590,15 @@ setTimeout(() => location.reload(), 5000);
 {% if selected_run %}
 {{ scatter_points|json_script:"scatter-data" }}
 {{ plotly_heatmap_rows|json_script:"gap-heatmap-data" }}
+{{ skill_correlation_matrix|json_script:"skill-correlation-data" }}
+{{ role_skill_divergence|json_script:"role-divergence-data" }}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
 const scatterPoints = JSON.parse(document.getElementById('scatter-data').textContent);
 const gapHeatmapRows = JSON.parse(document.getElementById('gap-heatmap-data')?.textContent || '[]');
+const skillCorrelationMatrix = JSON.parse(document.getElementById('skill-correlation-data')?.textContent || '{}');
+const roleSkillDivergence = JSON.parse(document.getElementById('role-divergence-data')?.textContent || '{}');
 const ctx = document.getElementById('gapChart');
 if (ctx) {
   new Chart(ctx, {
@@ -606,200 +632,60 @@ if (ctx) {
   });
 }
 
-const gapVisualMode = document.getElementById('gapVisualMode');
-const gapCourseFilter = document.getElementById('gapCourseFilter');
-const gapTopLimit = document.getElementById('gapTopLimit');
-const gapShowLabels = document.getElementById('gapShowLabels');
-const gapJobLegend = document.getElementById('gapJobLegend');
-
 function shortLabel(value, limit = 34) {
   const text = String(value || '');
   return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
 }
 
-function escapeHeatmapHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, char => ({
-    '&':'&amp;',
-    '<':'&lt;',
-    '>':'&gt;',
-    '"':'&quot;',
-    "'":'&#39;',
-  }[char]));
-}
-
-function populateGapCourseFilter() {
-  if (!gapCourseFilter || !gapHeatmapRows.length) return;
-  const current = gapCourseFilter.value;
-  const courses = [...new Map(gapHeatmapRows.map(row => [row.course_id, row])).values()]
-    .sort((a, b) => String(a.course).localeCompare(String(b.course)));
-  gapCourseFilter.innerHTML = '<option value="">All courses</option>';
-  courses.forEach(row => {
-    const option = document.createElement('option');
-    option.value = row.course_id;
-    option.textContent = row.course_name || row.course;
-    gapCourseFilter.appendChild(option);
-  });
-  gapCourseFilter.value = courses.some(row => String(row.course_id) === current) ? current : '';
-}
-
-function selectedGapRows() {
-  const selectedCourse = gapCourseFilter?.value || '';
-  const limit = Number(gapTopLimit?.value || 25);
-  const rows = selectedCourse
-    ? gapHeatmapRows.filter(row => String(row.course_id) === selectedCourse)
-    : gapHeatmapRows;
-  return rows
-    .slice()
-    .sort((a, b) => Number(a.score || 0) - Number(b.score || 0) || String(a.job).localeCompare(String(b.job)))
-    .slice(0, limit);
-}
-
-function renderGapJobLegend(rows) {
-  if (!gapJobLegend) return;
-  const jobs = [...new Map(rows.map(row => [row.job_id, row])).values()];
-  if (!jobs.length) {
-    gapJobLegend.innerHTML = '';
+function renderSkillCorrelationHeatmap(container) {
+  const skills = skillCorrelationMatrix.skills || [];
+  const values = skillCorrelationMatrix.values || [];
+  const labels = skillCorrelationMatrix.labels || [];
+  if (!skills.length || !values.length) {
+    container.innerHTML = '<div class="plotly-heatmap-empty">No skill correlation data for the current filter.</div>';
     return;
   }
-  gapJobLegend.innerHTML = jobs.map((row, index) => `
-    <div class="job-index-item" title="${escapeHeatmapHtml(row.job)}">
-      <span class="job-index-key">J${index + 1}</span>
-      <span class="job-index-name">${escapeHeatmapHtml(row.job)}${row.company ? ` - ${escapeHeatmapHtml(row.company)}` : ''}</span>
-    </div>
-  `).join('');
-}
-
-function renderRankedGapPlot(container, rows) {
-  const ranked = rows.slice().sort((a, b) => Number(a.score || 0) - Number(b.score || 0));
-  const height = Math.max(520, ranked.length * 24 + 150);
-  Plotly.newPlot(container, [{
-    type:'scatter',
-    mode:'markers',
-    x:ranked.map(row => row.score),
-    y:ranked.map(row => shortLabel(row.job, 54)),
-    customdata:ranked.map(row => [
-      row.course_name,
-      row.school,
-      row.job,
-      row.company || 'No company',
-      row.matched_count,
-      row.missing_count,
-      row.matched || 'None',
-      row.missing || 'None',
-    ]),
-    marker:{
-      size:ranked.map(row => Math.max(9, Math.min(30, 9 + Number(row.missing_count || 0) * 2))),
-      color:ranked.map(row => row.score),
-      cmin:0,
-      cmax:100,
-      colorscale:[
-        [0, '#f1f3f5'],
-        [.2, '#fff2df'],
-        [.45, '#ffbd80'],
-        [.7, '#f58220'],
-        [1, '#0b0b0b'],
-      ],
-      line:{ color:'#111', width:.7 },
-      colorbar:{ title:'Match %', thickness:14 },
-    },
-    hovertemplate:[
-      '<b>%{customdata[2]}</b>',
-      'Course: %{customdata[0]}',
-      'School: %{customdata[1]}',
-      'Company: %{customdata[3]}',
-      'Score: %{x}%',
-      'Matched skills: %{customdata[4]}',
-      'Missing skills: %{customdata[5]}',
-      '<br><b>Matched</b>: %{customdata[6]}',
-      '<b>Missing</b>: %{customdata[7]}',
-      '<extra></extra>',
-    ].join('<br>'),
-  }], {
-    title:{ text:'Ranked Job Matches', font:{ size:15 } },
-    paper_bgcolor:'#ffffff',
-    plot_bgcolor:'#ffffff',
-    height,
-    margin:{ l:270, r:42, t:48, b:70 },
-    font:{ family:'Inter, Arial', size:12, color:'#101010' },
-    xaxis:{ title:'Match score %', range:[0, 100], gridcolor:'#f2eee8' },
-    yaxis:{ title:'Job adverts', automargin:true },
-    shapes:[
-      { type:'rect', xref:'x', yref:'paper', x0:0, x1:40, y0:0, y1:1, fillcolor:'rgba(158,47,24,.05)', line:{ width:0 }, layer:'below' },
-      { type:'rect', xref:'x', yref:'paper', x0:40, x1:70, y0:0, y1:1, fillcolor:'rgba(245,130,32,.05)', line:{ width:0 }, layer:'below' },
-      { type:'rect', xref:'x', yref:'paper', x0:70, x1:100, y0:0, y1:1, fillcolor:'rgba(35,107,53,.05)', line:{ width:0 }, layer:'below' },
-    ],
-    annotations:[
-      { x:20, y:1.04, xref:'x', yref:'paper', text:'Weak', showarrow:false, font:{ size:11, color:'#8f2f24' } },
-      { x:55, y:1.04, xref:'x', yref:'paper', text:'Medium', showarrow:false, font:{ size:11, color:'#9a4a08' } },
-      { x:85, y:1.04, xref:'x', yref:'paper', text:'Strong', showarrow:false, font:{ size:11, color:'#236b35' } },
-    ],
-  }, {
-    responsive:true,
-    displayModeBar:true,
-    displaylogo:false,
-    modeBarButtonsToRemove:['select2d', 'lasso2d'],
+  const textAnnotations = [];
+  skills.forEach((rowSkill, rowIndex) => {
+    skills.forEach((colSkill, colIndex) => {
+      textAnnotations.push({
+        x:shortLabel(colSkill, 24),
+        y:shortLabel(rowSkill, 24),
+        text:labels[rowIndex]?.[colIndex] ?? '',
+        showarrow:false,
+        font:{ size:12, color:'#111111', family:'Inter, Arial' },
+      });
+    });
   });
-}
-
-function renderMatrixGapPlot(container, rows) {
-  const courses = [...new Map(rows.map(row => [row.course_id, row])).values()]
-    .map(row => ({ id:row.course_id, label:row.course, title:row.course_name, school:row.school }));
-  const jobs = [...new Map(rows.map(row => [row.job_id, row])).values()]
-    .map((row, index) => ({ id:row.job_id, label:row.job, key:`J${index + 1}`, company:row.company }));
-  const rowMap = new Map(rows.map(row => [`${row.course_id}|${row.job_id}`, row]));
-  const z = courses.map(course => jobs.map(job => rowMap.get(`${course.id}|${job.id}`)?.score ?? null));
-  const customdata = courses.map(course => jobs.map(job => {
-    const row = rowMap.get(`${course.id}|${job.id}`);
-    return row ? [
-      row.course_name,
-      row.school,
-      row.job,
-      row.company || 'No company',
-      row.matched_count,
-      row.missing_count,
-      row.matched || 'None',
-      row.missing || 'None',
-    ] : ['', '', '', '', 0, 0, 'None', 'None'];
-  }));
   Plotly.newPlot(container, [{
     type:'heatmap',
-    x:jobs.map(job => gapShowLabels?.checked ? shortLabel(job.label, 22) : job.key),
-    y:courses.map(course => course.label),
-    z,
-    customdata,
+    x:skills.map(skill => shortLabel(skill, 24)),
+    y:skills.map(skill => shortLabel(skill, 24)),
+    z:values,
     colorscale:[
-      [0, '#f1f3f5'],
-      [.2, '#fff2df'],
-      [.45, '#ffbd80'],
-      [.7, '#f58220'],
-      [1, '#0b0b0b'],
+      [0, '#3f6fa9'],
+      [.5, '#edf1f5'],
+      [1, '#b92f24'],
     ],
-    zmin:0,
-    zmax:100,
-    xgap:2,
-    ygap:2,
-    colorbar:{ title:'Match %', thickness:14 },
+    zmin:-1,
+    zmax:1,
+    xgap:3,
+    ygap:3,
+    colorbar:{ title:'Pearson r', thickness:14 },
     hovertemplate:[
-      '<b>%{customdata[0]}</b>',
-      'School: %{customdata[1]}',
-      'Job: %{customdata[2]}',
-      'Company: %{customdata[3]}',
-      'Score: %{z}%',
-      'Matched skills: %{customdata[4]}',
-      'Missing skills: %{customdata[5]}',
-      '<br><b>Matched</b>: %{customdata[6]}',
-      '<b>Missing</b>: %{customdata[7]}',
+      '<b>%{y}</b> and <b>%{x}</b>',
+      'Pearson r: %{z:.2f}',
       '<extra></extra>',
     ].join('<br>'),
   }], {
-    title:{ text:'Course-to-Job Matrix', font:{ size:15 } },
     paper_bgcolor:'#ffffff',
     plot_bgcolor:'#ffffff',
-    height:Math.max(520, courses.length * 36 + 220),
-    margin:{ l:150, r:36, t:48, b:gapShowLabels?.checked ? 190 : 90 },
+    height:Math.max(560, skills.length * 50 + 170),
+    margin:{ l:210, r:40, t:18, b:170 },
     font:{ family:'Inter, Arial', size:12, color:'#101010' },
-    xaxis:{ title:'Job adverts', tickangle:gapShowLabels?.checked ? -35 : 0, automargin:true },
-    yaxis:{ title:'Courses', automargin:true },
+    xaxis:{ tickangle:-35, automargin:true, side:'bottom', constrain:'domain' },
+    yaxis:{ automargin:true, autorange:'reversed', scaleanchor:'x' },
+    annotations:textAnnotations,
   }, {
     responsive:true,
     displayModeBar:true,
@@ -815,25 +701,94 @@ function renderGapPlotlyHeatmap() {
     container.innerHTML = '<div class="plotly-heatmap-empty">Plotly could not load for the heatmap.</div>';
     return;
   }
-  if (!gapHeatmapRows.length) {
-    container.innerHTML = '<div class="plotly-heatmap-empty">No course-job heatmap data for the current filter.</div>';
-    return;
-  }
-  const rows = selectedGapRows();
-  renderGapJobLegend(rows);
-  if (gapVisualMode?.value === 'matrix') {
-    renderMatrixGapPlot(container, rows);
-  } else {
-    renderRankedGapPlot(container, rows);
-  }
+  renderSkillCorrelationHeatmap(container);
 }
-populateGapCourseFilter();
-[gapVisualMode, gapCourseFilter, gapTopLimit, gapShowLabels].forEach(control => {
-  control?.addEventListener('change', renderGapPlotlyHeatmap);
-});
 document.querySelector('[data-tab="heatmapTab"]')?.addEventListener('click', () => {
   setTimeout(renderGapPlotlyHeatmap, 50);
 });
+
+function renderRoleSkillDivergence() {
+  const container = document.getElementById('roleDivergencePlots');
+  const countLabel = document.getElementById('roleDivergenceCount');
+  const searchInput = document.getElementById('roleDivergenceSearch');
+  const limitSelect = document.getElementById('roleDivergenceLimit');
+  if (!container) return;
+  if (!window.Plotly) {
+    container.innerHTML = '<div class="role-divergence-empty">Plotly could not load for the role divergence chart.</div>';
+    return;
+  }
+  const query = (searchInput?.value || '').trim().toLowerCase();
+  const selectedLimit = limitSelect?.value || '25';
+  const allRoles = roleSkillDivergence.roles || [];
+  const matchingRoles = query
+    ? allRoles.filter(role => String(role.role || '').toLowerCase().includes(query))
+    : allRoles;
+  const roles = selectedLimit === 'all'
+    ? matchingRoles
+    : matchingRoles.slice(0, Number(selectedLimit) || 25);
+  if (countLabel) {
+    countLabel.textContent = `${roles.length} of ${matchingRoles.length} matching role profile group${matchingRoles.length === 1 ? '' : 's'} shown`;
+  }
+  if (!roles.length) {
+    container.innerHTML = '<div class="role-divergence-empty">No role skill divergence data for the current filter.</div>';
+    return;
+  }
+  container.innerHTML = '';
+  roles.forEach((role, index) => {
+    const plot = document.createElement('div');
+    plot.className = 'role-divergence-panel';
+    plot.id = `roleDivergencePlot${index}`;
+    container.appendChild(plot);
+    const maxAbs = Math.max(0.1, ...role.values.map(value => Math.abs(Number(value) || 0)));
+    Plotly.newPlot(plot, [{
+      type:'bar',
+      orientation:'h',
+      x:role.values,
+      y:role.skills,
+      text:role.labels,
+      textposition:role.values.map(value => Number(value) >= 0 ? 'outside' : 'outside'),
+      marker:{
+        color:role.values.map(value => Number(value) >= 0 ? '#c83a2f' : '#3f6fa9'),
+        line:{ color:'#ffffff', width:1 },
+      },
+      hovertemplate:[
+        '<b>%{y}</b>',
+        'Divergence: %{x:.2f}',
+        '<extra></extra>',
+      ].join('<br>'),
+    }], {
+      title:{ text:role.role, font:{ size:20, family:'Inter, Arial', color:'#111111' }, x:0.5, xanchor:'center' },
+      height:Math.max(300, role.skills.length * 34 + 90),
+      paper_bgcolor:'#ffffff',
+      plot_bgcolor:'#ffffff',
+      margin:{ l:210, r:120, t:54, b:34 },
+      font:{ family:'Inter, Arial', size:13, color:'#222222' },
+      xaxis:{
+        range:[-maxAbs * 1.35, maxAbs * 1.35],
+        zeroline:true,
+        zerolinecolor:'#777777',
+        zerolinewidth:2,
+        gridcolor:'#e7e7e7',
+        tickformat:'.2f',
+      },
+      yaxis:{ automargin:true },
+      showlegend:false,
+      bargap:.24,
+    }, {
+      responsive:true,
+      displayModeBar:true,
+      displaylogo:false,
+      modeBarButtonsToRemove:['select2d', 'lasso2d'],
+    });
+  });
+}
+document.querySelector('[data-tab="roleDivergenceTab"]')?.addEventListener('click', () => {
+  setTimeout(renderRoleSkillDivergence, 50);
+});
+document.getElementById('roleDivergenceSearch')?.addEventListener('input', () => {
+  setTimeout(renderRoleSkillDivergence, 80);
+});
+document.getElementById('roleDivergenceLimit')?.addEventListener('change', renderRoleSkillDivergence);
 </script>
 {% endif %}
 {% endblock %}

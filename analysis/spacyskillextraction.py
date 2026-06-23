@@ -231,6 +231,9 @@ class SpacySkillExtractor:
             normalized = self._canonical(canonical)
             patterns_by_label.setdefault(normalized, set()).add(canonical)
             patterns_by_label[normalized].update(aliases)
+        for canonical, alias in self._database_skill_aliases():
+            patterns_by_label.setdefault(canonical, set()).add(canonical)
+            patterns_by_label[canonical].add(alias)
         for dynamic_skill in self._dynamic_skill_lexicon():
             patterns_by_label.setdefault(dynamic_skill, set()).add(dynamic_skill)
         self.patterns_by_label = patterns_by_label
@@ -254,6 +257,23 @@ class SpacySkillExtractor:
                 if phrase
             ]
             ruler.add_patterns(patterns)
+
+    def _database_skill_aliases(self):
+        if not getattr(settings, "DYNAMIC_SKILL_ALIAS_ENABLED", True):
+            return []
+        try:
+            from .models import SkillAlias
+            rows = SkillAlias.objects.filter(status="approved").values_list("canonical_skill", "alias")
+            return [
+                (self._canonical(canonical), self._canonical(alias))
+                for canonical, alias in rows
+                if self._canonical(canonical)
+                and self._canonical(alias)
+                and self._canonical(canonical) != self._canonical(alias)
+            ]
+        except Exception as exc:
+            logger.debug("Could not load DB skill aliases: %s", exc)
+            return []
 
     def _dynamic_skill_lexicon(self) -> set:
         if not getattr(settings, "DYNAMIC_SKILL_LEXICON_ENABLED", True):

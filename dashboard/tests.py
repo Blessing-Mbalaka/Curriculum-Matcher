@@ -6,11 +6,11 @@ from django.conf import settings
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from analysis.models import AnalysisRun, GapResult, SkillMatrix
+from analysis.models import AnalysisRun, GapResult, SkillAlias, SkillMatrix
 from analysis.models import TaskRecord
 from courses.models import Course
 from courses.models import Module
-from dashboard.views import current_extracted_skill_rows, recommendation_skill_insight, refine_skill_rows_for_business
+from dashboard.views import build_results_visual_data, current_extracted_skill_rows, recommendation_skill_insight, refine_skill_rows_for_business
 from jobs.models import JobAdvert
 
 
@@ -267,6 +267,7 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Select historic analysis run")
         self.assertContains(response, "Open Gap Results")
         self.assertContains(response, "Export Report")
+        self.assertContains(response, "Download Report Visuals")
         self.assertContains(response, "Download Visual CSV")
         self.assertContains(response, reverse("dashboard-visual-export"))
         self.assertContains(response, "id=\"voiceNarrationToggle\"")
@@ -638,6 +639,61 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "sap financial accounting")
         self.assertContains(response, "AI Suggestions Waiting For Human Review")
         self.assertContains(response, "Run Verification")
+        self.assertContains(response, "Aliases")
+        self.assertContains(response, "Rerun Analysis With Approved Aliases")
+        self.assertContains(response, "Start Hourly Reviewed Alias Refresh")
+
+    @override_settings(BERT_SKILL_NER_ENABLED=False, DYNAMIC_SKILL_ALIAS_ENABLED=True)
+    def test_approved_skill_alias_is_loaded_by_extractor(self):
+        from analysis.spacyskillextraction import SpacySkillExtractor
+
+        SkillAlias.objects.create(
+            canonical_skill="power bi",
+            alias="powerbi",
+            status="approved",
+            source="human_review",
+            confidence=1.0,
+        )
+
+        extractor = SpacySkillExtractor()
+        skills = extractor.extract("Build PowerBI dashboards for finance teams.")
+
+        self.assertIn("power bi", skills)
+
+    def test_alias_review_approves_candidate_for_next_run(self):
+        alias = SkillAlias.objects.create(
+            canonical_skill="business intelligence",
+            alias="bi reporting",
+            status="candidate",
+            source="evidence",
+            evidence_count=3,
+        )
+
+        response = self.client.post(reverse("skill-alias-review"), {
+            "alias_id": alias.id,
+            "canonical_skill": "business intelligence",
+            "alias": "BI reporting",
+            "action": "approve",
+            "next": reverse("human-oversight"),
+        })
+
+        self.assertEqual(response.status_code, 302)
+        alias.refresh_from_db()
+        self.assertEqual(alias.status, "approved")
+        self.assertEqual(alias.alias, "bi reporting")
+        self.assertEqual(alias.source, "human_review")
+
+    def test_hourly_alias_refresh_queues_background_loop(self):
+        with patch("dashboard.views.start_reviewed_alias_refresh_task") as start_task:
+            response = self.client.post(reverse("skill-alias-hourly-refresh"), {
+                "interval_seconds": "3600",
+                "max_jobs": "12",
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("task-list"))
+        task = TaskRecord.objects.get(run_name="Reviewed Alias Hourly Refresh: every 60 min")
+        start_task.assert_called_once_with(interval_seconds=3600, record_id=task.id, max_jobs=12)
 
     def test_human_oversight_run_checks_queues_background_verification(self):
         with patch("dashboard.views.start_skill_verification_task") as start_task:
@@ -815,13 +871,19 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Historic Analysis Runs")
         self.assertContains(response, "Select any saved run to revisit its scores")
         self.assertContains(response, "Download Visual CSV")
-        self.assertContains(response, "Course-to-Job Gap Heatmap")
-        self.assertContains(response, "Ranked jobs")
-        self.assertContains(response, "Matrix heatmap")
-        self.assertContains(response, "Show matrix job labels")
-        self.assertContains(response, "gapVisualMode")
-        self.assertContains(response, "gapCourseFilter")
-        self.assertContains(response, "gapJobLegend")
+        self.assertContains(response, "Download Report Visuals")
+        self.assertContains(response, "Skill Correlation Heatmap")
+        self.assertContains(response, "Correlation Structure Between Skills")
+        self.assertContains(response, "Role Skill Divergence")
+        self.assertContains(response, "Diverging bar chart of skill emphasis against the job-market baseline")
+        self.assertContains(response, "role-divergence-data")
+        self.assertContains(response, "roleDivergencePlots")
+        self.assertContains(response, "roleDivergenceSearch")
+        self.assertContains(response, "Search job title or role profile")
+        self.assertContains(response, "roleDivergenceLimit")
+        self.assertContains(response, "Top 25")
+        self.assertContains(response, "Pearson correlation coefficients across role requirement profiles")
+        self.assertContains(response, "skill-correlation-data")
         self.assertContains(response, "data-tab=\"heatmapTab\"")
         self.assertContains(response, "gapPlotlyHeatmap")
         self.assertContains(response, "gap-heatmap-data")
@@ -829,9 +891,11 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "type:'heatmap'")
         self.assertContains(response, "Explain course alignment heatmap")
         self.assertContains(response, "Explain matched versus missing scatter")
-        self.assertContains(response, "Explain course-to-job gap heatmap")
+        self.assertContains(response, "Explain skill correlation heatmap")
+        self.assertContains(response, "Explain role skill divergence")
         self.assertContains(response, "Each number inside a cell is the count of job adverts")
-        self.assertContains(response, "The number shown in hover is the match percentage, not a count")
+        self.assertContains(response, "Each cell compares two skills across job role profiles")
+        self.assertContains(response, "Red bars show skills that are more prominent for that role")
         self.assertContains(response, "Matched vs Missing Scatter")
         self.assertContains(response, "Curriculum Recommendations")
         self.assertContains(response, "Mismatch risk")
@@ -856,8 +920,102 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Export Report")
         csv_response = self.client.get(reverse("analysis-visual-export"), {"run": run.id, "school": "University of Johannesburg", "threshold": "55"})
         self.assertContains(csv_response, "visual,run,course_id,course,school,job_id,job")
+        self.assertContains(csv_response, "skill_correlation_heatmap")
         self.assertContains(csv_response, "course_to_job_gap_heatmap")
         self.assertContains(csv_response, "matched_vs_missing_scatter")
+
+    def test_visual_data_builds_skill_correlation_matrix_from_role_profiles(self):
+        analyst = JobAdvert.objects.create(title="Analyst", description="Analytics finance")
+        architect = JobAdvert.objects.create(title="Architect", description="Architecture leadership")
+        run = AnalysisRun.objects.create(name="Correlation run", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.6,
+            matched_skills=["strategy"],
+            missing_skills=["analytics"],
+        )
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=analyst,
+            similarity_score=0.6,
+            matched_skills=[],
+            missing_skills=["analytics", "finance"],
+        )
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=architect,
+            similarity_score=0.6,
+            matched_skills=["strategy"],
+            missing_skills=["leadership"],
+        )
+
+        visual_data = build_results_visual_data(list(GapResult.objects.filter(run=run).select_related("course", "job")), 55)
+        matrix = visual_data["skill_correlation_matrix"]
+        divergence = visual_data["role_skill_divergence"]
+        analytics_index = matrix["skills"].index("analytics")
+        finance_index = matrix["skills"].index("finance")
+
+        self.assertEqual(matrix["profile_count"], 3)
+        self.assertEqual(matrix["values"][analytics_index][analytics_index], 1.0)
+        self.assertGreater(matrix["values"][analytics_index][finance_index], 0)
+        self.assertEqual(divergence["profile_count"], 3)
+        self.assertTrue(any(row["role"] == "Analyst" for row in divergence["roles"]))
+        analyst_row = next(row for row in divergence["roles"] if row["role"] == "Analyst")
+        self.assertIn("finance", analyst_row["skills"])
+        self.assertGreater(analyst_row["values"][analyst_row["skills"].index("finance")], 0)
+
+    def test_model_validation_page_prints_notebook_outputs_and_equations(self):
+        self.course.university_name = "University of Johannesburg"
+        self.course.save(update_fields=["university_name"])
+        self.job.skills_extracted = ["strategy", "analytics"]
+        self.job.save(update_fields=["skills_extracted"])
+        Module.objects.create(
+            course=self.course,
+            name="Strategy Evidence",
+            content="Strategy and communication",
+            skills_extracted=["strategy", "communication"],
+        )
+        run = AnalysisRun.objects.create(name="Validation run", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.72,
+            score_breakdown={
+                "model": "semantic_skill_confidence_decision_tree_ensemble",
+                "semantic_score": 0.7,
+                "skill_score": 0.5,
+                "confidence_score": 0.8,
+                "decision_tree_score": 0.82,
+                "final_score": 0.72,
+            },
+            matched_skills=["strategy"],
+            missing_skills=["analytics"],
+        )
+
+        response = self.client.get(reverse("model-validation"), {"run": run.id})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Model Validation Notebook")
+        self.assertContains(response, "Publication-facing audit view")
+        self.assertContains(response, "Final Match Score Equation")
+        self.assertContains(response, "\\operatorname{finalScore}")
+        self.assertContains(response, "Pipeline Extraction Outputs")
+        self.assertContains(response, "Skill Correlation Cell Validation")
+        self.assertContains(response, "Role Skill Divergence Cell Validation")
+        self.assertContains(response, "Skill Gap Matrix Validation")
+        self.assertContains(response, "Show code used for this cell")
+        self.assertContains(response, "build_skill_correlation_matrix(results)")
+        self.assertContains(response, "build_role_skill_divergence(results)")
+        self.assertContains(response, "Output")
+        self.assertContains(response, "mathjax@3/es5/tex-svg.js")
+        self.assertContains(response, "Validation run")
+        self.assertContains(response, "strategy")
+        self.assertContains(response, "analytics")
 
     def test_dashboard_visual_csv_export_returns_source_rows(self):
         run = AnalysisRun.objects.create(name="Run with dashboard visuals", status="done")
@@ -879,9 +1037,29 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "skill_demand_vs_curriculum")
         self.assertContains(response, "course_to_job_network_edge")
 
-    def test_technical_report_export_returns_word_document(self):
+    def test_technical_report_export_queues_background_task(self):
+        run = AnalysisRun.objects.create(name="Report run", status="done")
+        GapResult.objects.create(
+            run=run,
+            course=self.course,
+            job=self.job,
+            similarity_score=0.66,
+            matched_skills=["strategy"],
+            missing_skills=["analytics"],
+        )
+
+        with patch("dashboard.views.start_research_paper_task") as start_task:
+            response = self.client.get(reverse("technical-report-export"))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("task-list"))
+        task = TaskRecord.objects.get(run_name="Research Paper Export: Report run")
+        start_task.assert_called_once_with(record_id=task.id, run_id=run.id)
+
+    def test_technical_report_download_returns_generated_word_document(self):
         from docx import Document
         from io import BytesIO
+        from analysis.tasks import _do_research_paper_report
 
         self.course.university_name = "University of Johannesburg"
         self.course.country = "South Africa"
@@ -898,7 +1076,10 @@ class DashboardVisualDataTests(TestCase):
         SkillMatrix.objects.create(run=run, source="jobs", skill="analytics", frequency=4)
         SkillMatrix.objects.create(run=run, source="courses", skill="strategy", frequency=2)
 
-        response = self.client.get(reverse("technical-report-export"))
+        task = TaskRecord.objects.create(run_name="Research Paper Export: Report run")
+        _do_research_paper_report(task.id, run.id)
+        task.refresh_from_db()
+        response = self.client.get(reverse("technical-report-download", args=[task.id]))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -906,15 +1087,48 @@ class DashboardVisualDataTests(TestCase):
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
         self.assertIn("curriculummatch-research-paper.docx", response["Content-Disposition"])
-        self.assertGreater(len(response.content), 1000)
-        document = Document(BytesIO(response.content))
+        content = b"".join(response.streaming_content)
+        self.assertGreater(len(content), 1000)
+        document = Document(BytesIO(content))
         text = "\n".join(paragraph.text for paragraph in document.paragraphs)
         self.assertIn("CurriculumMatch Research Paper Export", text)
+        self.assertIn("Dashboard Chart. Skill Demand vs Curriculum", text)
+        self.assertIn("Reference to Dashboard Chart. Skill Demand vs Curriculum", text)
+        self.assertIn("Dashboard Plotly Chart. Course-to-Job Similarity Cross-tab", text)
+        self.assertIn("Results Chart. Course Alignment Score-Band Heatmap", text)
         self.assertIn("3. Visual Evidence", text)
         self.assertIn("Figure 1. Score Distribution", text)
+        self.assertIn("CRISP-DM data-mining process", text)
+        self.assertIn("Methodology Diagram 0. CRISP-DM Data-Mining Process", text)
+        self.assertIn("Methodology Diagram 1. End-to-End Iterative Pipeline", text)
+        self.assertIn("Methodology Diagram 3. Validation Calculations", text)
+        self.assertIn("Methodology Diagram 4. Transformer Architecture for Skill Tagging", text)
+        self.assertIn("Methodology Diagram 5. Runtime Flow of Events", text)
+        self.assertIn("Human cleaning is therefore part of the data-mining loop", text)
+        self.assertIn("Supporting Equations", text)
+        self.assertIn("Final weighted score", text)
         self.assertIn("Figure 5. Skill Gap Matrix", text)
+        self.assertIn("Data Export Plotly Chart. Top Skill Evidence", text)
+        self.assertIn("Data Export Plotly Chart. Semantic Association Clusters", text)
         self.assertIn("5. Human Oversight and Learning", text)
         self.assertIn("6. Limitations", text)
+        artifact_roots = list((Path(settings.BASE_DIR) / "paper_artifacts").glob("*report-run*"))
+        self.assertTrue(artifact_roots)
+        image_files = list((artifact_roots[0] / "images").glob("*.png"))
+        self.assertTrue(image_files)
+        self.assertTrue((artifact_roots[0] / "images" / "methodology-crisp-dm-data-mining-process.png").exists())
+        self.assertTrue((artifact_roots[0] / "images" / "methodology-transformer-architecture.png").exists())
+        self.assertTrue((artifact_roots[0] / "images" / "methodology-runtime-flow-of-events.png").exists())
+        self.assertTrue((artifact_roots[0] / "visual_manifest.md").exists())
+
+        image_response = self.client.get(reverse("technical-report-visual-download", args=[run.id, "dashboard-skill-demand-vs-curriculum"]))
+        self.assertEqual(image_response.status_code, 200)
+        image_content = b"".join(image_response.streaming_content)
+        self.assertTrue(image_content.startswith(b"\x89PNG"))
+
+        archive_response = self.client.get(reverse("technical-report-visual-archive", args=[run.id]))
+        self.assertEqual(archive_response.status_code, 200)
+        self.assertEqual(archive_response["Content-Type"], "application/zip")
 
     def test_business_recommendations_refine_technical_skill_noise(self):
         insight = recommendation_skill_insight(

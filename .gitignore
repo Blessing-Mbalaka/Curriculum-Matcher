@@ -53,6 +53,9 @@ sqlite_data.json
 # Generated LLM memory outputs
 /memory/
 
+# Generated paper report images and manifests
+/paper_artifacts/
+
 # IDE
 .vscode/
 .idea/

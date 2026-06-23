@@ -48,6 +48,42 @@ class SkillMatrix(models.Model):
         ordering = ["-frequency"]
 
 
+class SkillAlias(models.Model):
+    STATUS = [
+        ("candidate", "Candidate"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
+    SOURCE = [
+        ("manual", "Manual"),
+        ("evidence", "Evidence"),
+        ("human_review", "Human review"),
+        ("import", "Import"),
+        ("model_suggestion", "Model suggestion"),
+        ("seed", "Seed"),
+    ]
+
+    canonical_skill = models.CharField(max_length=160)
+    alias = models.CharField(max_length=160)
+    status = models.CharField(max_length=20, choices=STATUS, default="candidate")
+    source = models.CharField(max_length=30, choices=SOURCE, default="evidence")
+    confidence = models.FloatField(default=0.0)
+    evidence_count = models.PositiveIntegerField(default=1)
+    created_from_text = models.TextField(blank=True)
+    created_from_doc_id = models.CharField(max_length=120, blank=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("canonical_skill", "alias")
+        ordering = ["status", "-evidence_count", "canonical_skill", "alias"]
+
+    def __str__(self):
+        return f"{self.alias} -> {self.canonical_skill} [{self.status}]"
+
+
 class TaskRecord(models.Model):
     STATUS = [("PENDING","Pending"),("STARTED","Started"),("SUCCESS","Success"),("FAILURE","Failure"),("STOPPED","Paused")]
     task_id = models.CharField(max_length=255, unique=False, blank=True)

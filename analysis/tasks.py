@@ -9,7 +9,9 @@ and auto-refreshes until status is SUCCESS or FAILURE.
 import logging
 import threading
 import time
+from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -118,6 +120,38 @@ def _do_adzuna_fetch(keyword, location, max_results, record_id):
         _mark(record_id, "SUCCESS", f"Fetched {count} new jobs for '{keyword}'", 100)
     except Exception as exc:
         logger.error(f"Adzuna fetch failed: {exc}", exc_info=True)
+        _mark(record_id, "FAILURE", str(exc))
+
+
+def _do_research_paper_report(record_id, run_id=None):
+    from analysis.models import GapResult, TaskRecord
+    from dashboard.researchpaper import REPORT_FILENAME, build_research_paper_docx
+    from dashboard.views import build_results_visual_data
+
+    _mark(record_id, "STARTED", "Collecting report data...", 10)
+    try:
+        run = None
+        if run_id:
+            from analysis.models import AnalysisRun
+            run = AnalysisRun.objects.filter(id=run_id).first()
+        if not run:
+            from dashboard.views import latest_visual_run
+            run = latest_visual_run()
+
+        _mark(record_id, "STARTED", "Building report visuals...", 35)
+        all_results = list(GapResult.objects.filter(run=run).select_related("course", "job")) if run else []
+        visual_data = build_results_visual_data(all_results, 55)
+
+        _mark(record_id, "STARTED", "Rendering Word document...", 70)
+        output = build_research_paper_docx(run, visual_data)
+        relative_path = Path("paper_artifacts") / "generated_reports" / f"task-{record_id}" / REPORT_FILENAME
+        output_path = Path(settings.BASE_DIR) / relative_path
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(output.getvalue())
+        TaskRecord.objects.filter(id=record_id).update(task_id=relative_path.as_posix())
+        _mark(record_id, "SUCCESS", "Research paper report ready to download.", 100)
+    except Exception as exc:
+        logger.error("Research paper report failed: %s", exc, exc_info=True)
         _mark(record_id, "FAILURE", str(exc))
 
 
@@ -287,6 +321,50 @@ def _do_continuous_job_cycle(keyword, location, max_results, interval_seconds, r
 # Public API — drop-in replacements for the old Celery .delay() calls
 # ---------------------------------------------------------------------------
 
+def _do_reviewed_alias_refresh(interval_seconds, record_id, max_jobs=None):
+    from analysis.models import GapResult, SkillAlias
+    from analysis.services import run_gap_analysis
+    from dashboard.views import build_results_visual_data
+
+    cycle = 0
+    try:
+        while not _stopped(record_id):
+            cycle += 1
+            approved_aliases = SkillAlias.objects.filter(status="approved").count()
+            _mark(record_id, "STARTED", f"Cycle {cycle}: refreshing analysis with {approved_aliases} approved aliases...", 5)
+
+            def report(percent, notes):
+                if _stopped(record_id):
+                    raise InterruptedError("Reviewed alias refresh paused by user.")
+                mapped = 5 + int(80 * max(0, min(100, percent)) / 100)
+                _mark(record_id, "STARTED", f"Cycle {cycle}: {notes}", mapped)
+
+            run = run_gap_analysis(
+                run_name=f"Reviewed Alias Refresh {cycle}",
+                progress_callback=report,
+                max_jobs=max_jobs,
+            )
+            all_results = list(GapResult.objects.filter(run=run).select_related("course", "job"))
+            build_results_visual_data(all_results, 55)
+            _mark(record_id, "STARTED", f"Cycle {cycle}: analysis #{run.id} complete; refreshed dashboard visuals are ready. Waiting {interval_seconds} seconds...", 95)
+
+            for remaining in range(max(1, int(interval_seconds)), 0, -1):
+                if _stopped(record_id):
+                    break
+                if remaining == interval_seconds or remaining <= 5 or remaining % 300 == 0:
+                    _mark(record_id, "STARTED", f"Cycle {cycle}: waiting {remaining} seconds before the next reviewed alias refresh.", 95)
+                time.sleep(1)
+
+        _mark(record_id, "STOPPED", "Reviewed alias refresh paused by user.", 100)
+    except InterruptedError:
+        _mark(record_id, "STOPPED", "Reviewed alias refresh paused by user.", 100)
+    except Exception as exc:
+        logger.error("Reviewed alias refresh failed: %s", exc, exc_info=True)
+        _mark(record_id, "FAILURE", str(exc))
+    finally:
+        STOP_EVENTS.pop(record_id, None)
+
+
 def run_gap_analysis_task(run_name="Analysis Run", record_id=None, max_jobs=None):
     """Start gap analysis in a background thread."""
     _run_in_thread(_do_gap_analysis, run_name, record_id, max_jobs)
@@ -307,10 +385,21 @@ def fetch_adzuna_task(keyword, location="south africa", max_results=50, record_i
     _run_in_thread(_do_adzuna_fetch, keyword, location, max_results, record_id)
 
 
+def start_research_paper_task(record_id=None, run_id=None):
+    """Build the research paper report in a background thread."""
+    _run_in_thread(_do_research_paper_report, record_id, run_id)
+
+
 def start_continuous_job_task(keyword, location="south africa", max_results=50, interval_seconds=30, record_id=None):
     """Continuously fetch jobs and run gap analysis until paused."""
     STOP_EVENTS[record_id] = threading.Event()
     _run_in_thread(_do_continuous_job_cycle, keyword, location, max_results, interval_seconds, record_id)
+
+
+def start_reviewed_alias_refresh_task(interval_seconds=3600, record_id=None, max_jobs=None):
+    """Continuously rerun analysis so reviewed skills and aliases feed fresh visuals."""
+    STOP_EVENTS[record_id] = threading.Event()
+    _run_in_thread(_do_reviewed_alias_refresh, interval_seconds, record_id, max_jobs)
 
 
 def start_continuous_adzuna_task(keyword, location="south africa", max_results=50, interval_seconds=30, record_id=None):

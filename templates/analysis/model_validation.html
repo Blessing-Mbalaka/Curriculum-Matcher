@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Model Validation Notebook - CurriculumMatch{% endblock %}
+{% block page_title %}Model Validation Notebook{% endblock %}
+{% block topbar_actions %}
+  {% if selected_run %}
+  <a href="{% url 'analysis-results' %}?run={{ selected_run.id }}" class="btn btn-outline">Open Gap Results</a>
+  <a href="{% url 'analysis-visual-export' %}?run={{ selected_run.id }}&threshold={{ threshold }}" class="btn btn-outline">Download Visual CSV</a>
+  {% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.notebook-head { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:18px; align-items:end; margin-bottom:18px; }
+.notebook-title { font-family:var(--display); font-size:30px; font-weight:900; line-height:1.05; }
+.notebook-subtitle { color:var(--muted); max-width:820px; margin-top:8px; }
+.validation-form { display:grid; grid-template-columns:minmax(260px,1fr) 120px 120px auto; gap:10px; align-items:end; margin-bottom:18px; }
+.notebook-cell { background:#fff; border:1px solid var(--rule); border-radius:8px; margin-bottom:18px; overflow:hidden; box-shadow:0 16px 40px rgba(11,11,11,.04); }
+.cell-head { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:13px 16px; border-bottom:1px solid var(--rule); background:#fbfaf7; }
+.cell-title { font-weight:900; font-family:var(--display); font-size:16px; }
+.cell-tag { font-family:var(--mono); color:#9a4a08; font-size:10px; text-transform:uppercase; letter-spacing:.1em; }
+.cell-body { padding:16px; }
+.equation-box { background:#101010; color:#fff; border-radius:8px; padding:16px; overflow:auto; margin-bottom:14px; }
+.equation-box mjx-container { color:#fff; }
+.output-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px; }
+.output-tile { border:1px solid var(--rule); border-radius:8px; padding:12px; background:#fff; }
+.output-value { font-family:var(--display); font-size:26px; font-weight:900; }
+.audit-table { max-height:520px; overflow:auto; border:1px solid var(--rule); border-radius:8px; }
+.audit-table table { min-width:900px; }
+.wide-table table { min-width:1200px; }
+.json-output { background:#111; color:#f7f1e9; border-radius:8px; padding:14px; overflow:auto; font-family:var(--mono); font-size:11px; line-height:1.55; }
+.code-cell { border:1px solid var(--rule); border-radius:8px; margin-bottom:14px; background:#fff; overflow:hidden; }
+.code-cell summary { cursor:pointer; padding:10px 12px; font-weight:800; color:#111; background:#f7f4ed; border-bottom:1px solid transparent; }
+.code-cell[open] summary { border-bottom-color:var(--rule); }
+.code-cell pre { margin:0; padding:14px; background:#111; color:#f7f1e9; overflow:auto; font-family:var(--mono); font-size:11px; line-height:1.55; }
+.output-label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:#9a4a08; margin:4px 0 10px; }
+.skill-list { display:flex; flex-wrap:wrap; gap:5px; max-width:360px; }
+.metric-note { color:var(--muted); font-size:12px; margin-top:8px; }
+@media (max-width:900px) {
+  .notebook-head, .validation-form { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="notebook-head">
+  <div>
+    <div class="notebook-title">Model Validation Notebook</div>
+    <div class="notebook-subtitle">Publication-facing audit view for model outputs across the pipeline. Each cell prints stored run outputs beside the equation used to derive or validate the value.</div>
+  </div>
+  {% if selected_run %}<span class="badge badge-gold">{{ selected_run.name }} - {{ selected_run.status|upper }}</span>{% endif %}
+</div>
+
+{% if runs %}
+<form method="get" class="card validation-form">
+  <div>
+    <label class="form-label" for="run">Analysis run</label>
+    <select class="form-control" id="run" name="run">
+      {% for run in runs %}
+      <option value="{{ run.id }}" {% if selected_run and selected_run.id == run.id %}selected{% endif %}>{{ run.name }} - {{ run.status|upper }} - {{ run.created_at|date:"d M Y H:i" }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label class="form-label" for="threshold">Threshold</label>
+    <input class="form-control" id="threshold" name="threshold" type="number" min="0" max="100" value="{{ threshold }}">
+  </div>
+  <div>
+    <label class="form-label" for="limit">Rows</label>
+    <input class="form-control" id="limit" name="limit" type="number" min="5" max="200" value="{{ sample_limit }}">
+  </div>
+  <button class="btn btn-primary" type="submit">Load Notebook</button>
+</form>
+{% endif %}
+
+{% if selected_run %}
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 1</div><div class="cell-title">Run Summary</div></div><span class="badge badge-gray">Stored outputs</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>runs = AnalysisRun.objects.all()
+selected_run = get_object_or_404(AnalysisRun, id=request.GET["run"])
+results = GapResult.objects.filter(run=selected_run)
+visual_data = build_results_visual_data(results, threshold)
+
+output = {
+    "gap_results": results.count(),
+    "sample_rows": sample_limit,
+    "correlation_profiles": visual_data["skill_correlation_matrix"]["profile_count"],
+    "divergence_profiles": visual_data["role_skill_divergence"]["profile_count"],
+}</code></pre>
+    </details>
+    <div class="output-label">Output</div>
+    <div class="output-grid">
+      <div class="output-tile"><div class="card-label">GapResult rows</div><div class="output-value">{{ result_count }}</div></div>
+      <div class="output-tile"><div class="card-label">Notebook sample</div><div class="output-value">{{ score_rows|length }}</div></div>
+      <div class="output-tile"><div class="card-label">Correlation profiles</div><div class="output-value">{{ skill_correlation_matrix.profile_count }}</div></div>
+      <div class="output-tile"><div class="card-label">Divergence profiles</div><div class="output-value">{{ role_skill_divergence.profile_count }}</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 2</div><div class="cell-title">Final Match Score Equation</div></div><span class="badge badge-gold">MathJax</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>weights = score_weights()
+for result in sampled_results:
+    breakdown = result.score_breakdown
+    semantic = breakdown["semantic_score"]
+    skill = breakdown["skill_score"]
+    confidence = breakdown["confidence_score"]
+    tree = breakdown["decision_tree_score"]
+    calculated = (
+        weights["semantic"] * semantic
+        + weights["skill"] * skill
+        + weights["confidence"] * confidence
+        + weights["tree"] * tree
+    ) / weights["total"]</code></pre>
+    </details>
+    <div class="equation-box">
+      \[
+      \operatorname{finalScore} =
+      \frac{
+      {{ weights.semantic }}s + {{ weights.skill }}k + {{ weights.confidence }}c + {{ weights.tree }}t
+      }{
+      {{ weights.total }}
+      }
+      \]
+      \[
+      k = \frac{|\operatorname{matchedSkills}|}{|\operatorname{jobSkills}|}
+      \]
+    </div>
+    <div class="output-label">Output</div>
+    <div class="audit-table wide-table">
+      <table>
+        <thead><tr><th>Course</th><th>Job</th><th>Stored %</th><th>Recalc %</th><th>Semantic</th><th>Skill k</th><th>Confidence c</th><th>Tree t</th><th>Matched / Job skills</th><th>Matched</th><th>Missing</th></tr></thead>
+        <tbody>
+          {% for row in score_rows %}
+          <tr>
+            <td><strong>{{ row.course }}</strong><div class="text-muted text-sm">{{ row.course_name }}</div></td>
+            <td><strong>{{ row.job }}</strong><div class="text-muted text-sm">{{ row.company }}</div></td>
+            <td>{{ row.stored_score }}%</td>
+            <td>{{ row.calculated_score }}%</td>
+            <td>{{ row.semantic }}</td>
+            <td>{{ row.skill }}</td>
+            <td>{{ row.confidence }}</td>
+            <td>{{ row.tree }}</td>
+            <td>{{ row.matched_count }} / {{ row.job_skill_count }}</td>
+            <td><div class="skill-list">{% for skill in row.matched_skills|slice:":10" %}<span class="chip chip-match">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+            <td><div class="skill-list">{% for skill in row.missing_skills|slice:":10" %}<span class="chip chip-miss">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="11">No model score outputs for this run.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 3</div><div class="cell-title">Pipeline Extraction Outputs</div></div><span class="badge badge-blue">NER evidence</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>sampled_results = attach_result_skill_evidence(results[:sample_limit], limit=18)
+for result in sampled_results:
+    output_row = {
+        "course_skills": result.course_display_skills,
+        "job_skills": result.job_display_skills,
+        "matched_skills": result.matched_skills,
+        "missing_skills": result.missing_skills,
+    }</code></pre>
+    </details>
+    <div class="output-label">Output</div>
+    <div class="audit-table wide-table">
+      <table>
+        <thead><tr><th>Course</th><th>Job</th><th>Course extracted skills</th><th>Job extracted skills</th><th>Matched skills</th><th>Missing skills</th></tr></thead>
+        <tbody>
+        {% for result in sampled_results %}
+          <tr>
+            <td><strong>{{ result.course.code|default:result.course.name }}</strong><div class="text-muted text-sm">{{ result.course.name }}</div></td>
+            <td><strong>{{ result.job.title }}</strong><div class="text-muted text-sm">{{ result.job.company|default:"No company" }}</div></td>
+            <td><div class="skill-list">{% for skill in result.course_display_skills %}<span class="chip">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+            <td><div class="skill-list">{% for skill in result.job_display_skills %}<span class="chip">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+            <td><div class="skill-list">{% for skill in result.matched_skills %}<span class="chip chip-match">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+            <td><div class="skill-list">{% for skill in result.missing_skills %}<span class="chip chip-miss">{{ skill }}</span>{% empty %}<span class="text-muted text-sm">None</span>{% endfor %}</div></td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6">No extraction outputs for this run.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 4</div><div class="cell-title">Skill Correlation Cell Validation</div></div><span class="badge badge-gold">Pearson r</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>matrix = build_skill_correlation_matrix(results)
+for row_skill in matrix["skills"]:
+    for column_skill in matrix["skills"]:
+        x = presence_vector(row_skill, role_profiles)
+        y = presence_vector(column_skill, role_profiles)
+        cell_value = pearson(x, y)</code></pre>
+    </details>
+    <div class="equation-box">
+      \[
+      r_{xy} = \frac{\sum_{i=1}^{n}(x_i-\bar{x})(y_i-\bar{y})}{\sqrt{\sum_{i=1}^{n}(x_i-\bar{x})^2}\sqrt{\sum_{i=1}^{n}(y_i-\bar{y})^2}}
+      \]
+      \[
+      x_i,y_i \in \{0,1\}\quad\text{for skill presence in role requirement profile }i
+      \]
+    </div>
+    <div class="output-label">Output</div>
+    <div class="audit-table">
+      <table>
+        <thead><tr><th>Row skill</th><th>Column skill</th><th>Cell value</th><th>Interpretation</th></tr></thead>
+        <tbody>
+        {% for cell in correlation_cells %}
+          <tr>
+            <td>{{ cell.row_skill }}</td>
+            <td>{{ cell.column_skill }}</td>
+            <td>{{ cell.value }}</td>
+            <td>{% if cell.value > 0 %}Positive co-occurrence{% elif cell.value < 0 %}Negative association{% else %}Neutral or insufficient variance{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="4">No correlation cells available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 5</div><div class="cell-title">Role Skill Divergence Cell Validation</div></div><span class="badge badge-rust">Diverging bars</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>divergence = build_role_skill_divergence(results)
+for role in divergence["roles"]:
+    for skill in role["skills"]:
+        role_share = count(skill, role) / total_skill_count(role)
+        baseline_share = count(skill, all_roles) / total_skill_count(all_roles)
+        cell_value = role_share - baseline_share</code></pre>
+    </details>
+    <div class="equation-box">
+      \[
+      d_{r,s} = \frac{\operatorname{count}(s,r)}{\sum_j\operatorname{count}(j,r)}
+      -
+      \frac{\operatorname{count}(s)}{\sum_j\operatorname{count}(j)}
+      \]
+    </div>
+    <div class="output-label">Output</div>
+    <div class="audit-table">
+      <table>
+        <thead><tr><th>Role</th><th>Skill</th><th>Divergence</th><th>Role profiles</th></tr></thead>
+        <tbody>
+        {% for cell in divergence_cells %}
+          <tr><td>{{ cell.role }}</td><td>{{ cell.skill }}</td><td>{{ cell.value }}</td><td>{{ cell.profile_count }}</td></tr>
+        {% empty %}
+          <tr><td colspan="4">No divergence cells available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="notebook-cell">
+  <div class="cell-head"><div><div class="cell-tag">Cell 6</div><div class="cell-title">Skill Gap Matrix Validation</div></div><span class="badge badge-gray">Coverage</span></div>
+  <div class="cell-body">
+    <details class="code-cell">
+      <summary>Show code used for this cell</summary>
+<pre><code>skill_matrix = build_skill_suggestion_matrix(results)
+for row in skill_matrix:
+    demand = row["matched_count"] + row["missing_count"]
+    gap_percent = row["missing_count"] / max(1, demand) * 100
+    coverage = row["matched_count"] / max(1, demand) * 100</code></pre>
+    </details>
+    <div class="equation-box">
+      \[
+      \operatorname{gapPercent}_s = \frac{\operatorname{missingEvidence}_s}{\operatorname{matchedEvidence}_s + \operatorname{missingEvidence}_s}
+      \times 100
+      \]
+      \[
+      \operatorname{coverage}_s = \frac{\operatorname{matchedEvidence}_s}{\operatorname{matchedEvidence}_s + \operatorname{missingEvidence}_s}
+      \times 100
+      \]
+    </div>
+    <div class="output-label">Output</div>
+    <div class="audit-table">
+      <table>
+        <thead><tr><th>Skill</th><th>Demand</th><th>Matched</th><th>Missing</th><th>Gap %</th><th>Coverage %</th><th>Jobs</th><th>Courses covered</th></tr></thead>
+        <tbody>
+        {% for row in skill_suggestion_matrix %}
+          <tr><td>{{ row.skill }}</td><td>{{ row.demand_count }}</td><td>{{ row.matched_count }}</td><td>{{ row.missing_count }}</td><td>{{ row.gap_percent }}%</td><td>{{ row.coverage }}%</td><td>{{ row.job_count }}</td><td>{{ row.course_count }}</td></tr>
+        {% empty %}
+          <tr><td colspan="8">No skill gap matrix rows available.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="empty">
+  <div class="empty-title">No analysis runs yet</div>
+  <div class="empty-text">Run the gap analysis first, then return here to inspect model outputs.</div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['\\(', '\\)'], ['$', '$']], displayMath: [['\\[', '\\]']] },
+  svg: { fontCache: 'global' }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
+{% endblock %}

@@ -3,6 +3,9 @@
 {% block page_title %}Executive Dashboard{% endblock %}
 {% block topbar_actions %}
   <a href="{% url 'dashboard-visual-export' %}{% if selected_dashboard_run %}?run={{ selected_dashboard_run.id }}{% endif %}" class="btn btn-outline">Download Visual CSV</a>
+  {% if selected_dashboard_run %}
+  <a href="{% url 'technical-report-visual-archive' selected_dashboard_run.id %}" class="btn btn-outline">Download Report Visuals</a>
+  {% endif %}
   <a href="{% url 'technical-report-export' %}" class="btn btn-outline">Export Report</a>
   <form method="post" action="{% url 'run-analysis' %}" id="analysisQueueForm">
     {% csrf_token %}

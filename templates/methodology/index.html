@@ -43,6 +43,17 @@
   gap:12px;
   align-content:center;
 }
+.pipeline-card::after {
+  content:"Reviewed outputs loop back into the next analysis refresh.";
+  display:block;
+  border:1px solid #ffbd80;
+  border-radius:8px;
+  background:#fff7ed;
+  color:#4d3520;
+  padding:10px 12px;
+  font-size:12px;
+  line-height:1.45;
+}
 .pipeline-step {
   display:grid;
   grid-template-columns:42px 1fr;
@@ -168,6 +179,74 @@
   color:var(--gold-dark);
   border:1px solid #ffbd80;
   font-size:12px;
+  font-weight:900;
+}
+.crisp-map {
+  display:grid;
+  grid-template-columns:repeat(6, minmax(120px, 1fr));
+  gap:12px;
+  margin-top:18px;
+}
+.crisp-stage {
+  position:relative;
+  min-height:138px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:#fff;
+  padding:14px;
+  display:grid;
+  gap:8px;
+  align-content:start;
+}
+.crisp-stage::after {
+  content:"";
+  position:absolute;
+  top:30px;
+  right:-15px;
+  width:18px;
+  height:2px;
+  background:var(--gold);
+}
+.crisp-stage:last-child::after { display:none; }
+.crisp-num {
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  background:#0b0b0b;
+  color:var(--gold);
+  font-family:var(--mono);
+  font-size:11px;
+  font-weight:900;
+}
+.crisp-stage b { font-size:12px; }
+.crisp-stage span { color:var(--muted); font-size:11px; line-height:1.45; }
+.crisp-loop {
+  margin-top:12px;
+  border:1px solid #ffbd80;
+  border-radius:8px;
+  background:#fff7ed;
+  padding:12px 14px;
+  color:#4d3520;
+  font-size:12px;
+  line-height:1.55;
+}
+.pipeline-feedback {
+  display:grid;
+  grid-template-columns:1fr auto 1fr auto 1fr auto 1fr;
+  gap:10px;
+  align-items:center;
+  border:1px solid #ffbd80;
+  border-radius:8px;
+  background:#fff7ed;
+  padding:12px 14px;
+}
+.pipeline-feedback b { display:block; font-size:12px; }
+.pipeline-feedback span { display:block; color:#5c4937; font-size:11px; line-height:1.45; margin-top:2px; }
+.feedback-arrow {
+  color:var(--gold-dark);
+  font-family:var(--mono);
   font-weight:900;
 }
 .method-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; }
@@ -438,11 +517,16 @@
   .method-hero, .method-grid, .method-two, .funnel-wrap, .limitations-grid { grid-template-columns:1fr; }
   .flow-map { grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .flow-node::after { display:none; }
+  .pipeline-feedback { grid-template-columns:1fr; }
+  .feedback-arrow { display:none; }
+  .crisp-map { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .crisp-stage::after { display:none; }
   .visual-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width:700px) {
   .method-title { font-size:28px; }
   .flow-map { grid-template-columns:1fr; }
+  .crisp-map { grid-template-columns:1fr; }
   .calc-row, .viz-row { grid-template-columns:1fr; }
   .visual-grid, .preprocess-visual, .tree-visual { grid-template-columns:1fr; }
   .pre-arrow { min-height:28px; }
@@ -490,16 +574,67 @@
         <div class="step-num">04</div>
         <div><strong>Score, filter, and visualise</strong><span>Cosine scores, skill gaps, extraction confidence, decision-tree ranking, Plotly heatmaps, forecasts, source tiles, and semantic skill clusters make alignment inspectable.</span></div>
       </div>
+      <div class="pipeline-step">
+        <div class="step-num">05</div>
+        <div><strong>Review and feed back</strong><span>Human-approved skills and aliases become trusted data, then the reviewed-alias refresh reruns analysis and updates visuals.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd">
+      <div>
+        <h2>CRISP-DM Data-Mining Framework</h2>
+        <p class="method-text">
+          CurriculumMatch follows the Cross Industry Standard Process for Data Mining as the organising logic for the whole workflow. The framework makes the system auditable because each stage records what evidence was used, how skill extraction was cleaned, which calculations produced scores, and how reviewed knowledge feeds the next run.
+        </p>
+      </div>
+      <span class="badge badge-gold">Cross-industry standard process</span>
+    </div>
+    <div class="crisp-map" aria-label="CRISP-DM data-mining process used by CurriculumMatch">
+      <div class="crisp-stage">
+        <div class="crisp-num">01</div>
+        <b>Business Understanding</b>
+        <span>Define the curriculum question: which course skills align with labour-market demand, and where are the gaps?</span>
+      </div>
+      <div class="crisp-stage">
+        <div class="crisp-num">02</div>
+        <b>Data Understanding</b>
+        <span>Inspect courses, modules, uploads, job adverts, dates, sectors, and extracted skill evidence before scoring.</span>
+      </div>
+      <div class="crisp-stage">
+        <div class="crisp-num">03</div>
+        <b>Data Preparation</b>
+        <span>Clean text, deduplicate jobs, normalise skill strings, review aliases, and preserve source evidence for audit.</span>
+      </div>
+      <div class="crisp-stage">
+        <div class="crisp-num">04</div>
+        <b>Modelling</b>
+        <span>Run NER, phrase matching, approved aliases, embeddings, cosine similarity, skill coverage, and ensemble scoring.</span>
+      </div>
+      <div class="crisp-stage">
+        <div class="crisp-num">05</div>
+        <b>Evaluation</b>
+        <span>Use Human Oversight to approve/reject candidate skills and aliases, then validate heatmaps, gaps, and equations.</span>
+      </div>
+      <div class="crisp-stage">
+        <div class="crisp-num">06</div>
+        <b>Deployment</b>
+        <span>Publish dashboard visuals, CSV exports, report figures, and the DOCX paper; hourly refresh can rerun reviewed aliases.</span>
+      </div>
+    </div>
+    <div class="crisp-loop">
+      Feedback loop: approved skill entities and approved aliases become trusted data. The reviewed-alias refresh task reruns analysis in the background so GapResult rows, SkillMatrix frequencies, dashboard visuals, downloadable figures, and the paper export reflect human-cleaned extraction knowledge.
     </div>
   </section>
 
   <section class="card flow-section">
     <div class="section-hd">
       <div>
-        <h2>End-to-End Pipeline</h2>
-        <p class="method-text">The full workflow moves from raw curriculum and labour-market evidence through extraction, scoring, review, visualisation, and curriculum decision support.</p>
+        <h2>End-to-End Iterative Pipeline</h2>
+        <p class="method-text">The runtime moves through collection, extraction, scoring, review, visualisation, and decision support; methodologically, the workflow is circular because human-cleaned skills and approved aliases feed the next analysis refresh.</p>
       </div>
-      <span class="badge badge-gold">Pipeline + funnel</span>
+      <span class="badge badge-gold">Pipeline + feedback loop</span>
     </div>
 
     <div class="flow-map" aria-label="End-to-end CurriculumMatch pipeline">
@@ -539,6 +674,16 @@
         <p>Dashboards, Plotly heatmaps, forecasts, semantic clusters, vector space, and CSV exports support review and reporting.</p>
         <div class="flow-tags"><span class="flow-tag">Plotly</span><span class="flow-tag">CSV</span><span class="flow-tag">forecast</span></div>
       </div>
+    </div>
+
+    <div class="pipeline-feedback" aria-label="Methodology feedback loop">
+      <div><b>Visualise and export</b><span>Dashboards, CSV, PNG figures, and DOCX reports expose the current evidence.</span></div>
+      <div class="feedback-arrow">-&gt;</div>
+      <div><b>Human Oversight</b><span>Reviewers approve, edit, reject, or alias extracted skills.</span></div>
+      <div class="feedback-arrow">-&gt;</div>
+      <div><b>Next analysis refresh</b><span>Reviewed skills and aliases are reloaded by the extractor and update scores and visuals.</span></div>
+      <div class="feedback-arrow">-&gt;</div>
+      <div><b>Back to Ingest Evidence</b><span>The refreshed run becomes the new baseline for the next curriculum-to-market comparison.</span></div>
     </div>
 
     <div class="funnel-wrap">

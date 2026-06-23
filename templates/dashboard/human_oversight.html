@@ -108,7 +108,7 @@
     <div class="oversight-step"><b>1. Check</b><span>Run verification against jobs and courses with thin skill evidence.</span></div>
     <div class="oversight-step"><b>2. Review</b><span>Inspect AI suggestions, source, type, and supporting evidence.</span></div>
     <div class="oversight-step"><b>3. Approve</b><span>Approved rows become reviewed skills and enter extracted skill lists.</span></div>
-    <div class="oversight-step"><b>4. Learn</b><span>Reviewed skills feed the dynamic lexicon and retraining datasets.</span></div>
+    <div class="oversight-step"><b>4. Learn</b><span>Reviewed skills and aliases feed the next analysis run.</span></div>
   </div>
 </div>
 
@@ -147,6 +147,9 @@
   </button>
   <button class="oversight-tab" type="button" role="tab" aria-selected="false" data-tab-target="learned">
     Learned Skills <span class="oversight-tab-count">{{ recent_reviewed_rows|length }}</span>
+  </button>
+  <button class="oversight-tab" type="button" role="tab" aria-selected="false" data-tab-target="aliases">
+    Aliases <span class="oversight-tab-count">{{ alias_counts.candidate }}</span>
   </button>
 </div>
 
@@ -344,6 +347,111 @@
     </div>
 </div>
 
+<div class="tab-panel" data-tab-panel="aliases">
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>Alias Review</h2>
+          <div class="tab-explainer">Alias candidates are mined from reviewed evidence where the observed text differs from the canonical skill. Approved aliases are loaded by the extractor on the next analysis run.</div>
+        </div>
+        <div class="bulk-actions">
+          <span class="badge badge-gold">{{ alias_counts.candidate }} candidate</span>
+          <span class="badge badge-green">{{ alias_counts.approved }} approved</span>
+        </div>
+      </div>
+      <form class="manual-create" method="post" action="{% url 'skill-alias-create' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'human-oversight' %}#aliases">
+        <input class="form-control" name="canonical_skill" placeholder="Canonical skill, e.g. power bi" aria-label="Canonical skill">
+        <input class="form-control" name="alias" placeholder="Alias, e.g. powerbi" aria-label="Alias">
+        <input class="form-control" name="evidence" placeholder="Optional evidence note" aria-label="Evidence">
+        <select class="form-control" name="status" aria-label="Status">
+          <option value="approved">approved</option>
+          <option value="candidate">candidate</option>
+        </select>
+        <button class="btn btn-primary btn-sm" type="submit">Save Alias</button>
+      </form>
+      <form class="manual-create mt-3" method="post" action="{% url 'run-analysis' %}">
+        {% csrf_token %}
+        <input type="hidden" name="run_name" value="Enhanced Alias Analysis">
+        <button class="btn btn-outline btn-sm" type="submit">Rerun Analysis With Approved Aliases</button>
+      </form>
+      <form class="manual-create mt-3" method="post" action="{% url 'skill-alias-hourly-refresh' %}">
+        {% csrf_token %}
+        <input class="form-control" type="number" name="interval_seconds" min="60" max="86400" value="3600" aria-label="Refresh interval seconds">
+        <input class="form-control" type="number" name="max_jobs" min="0" max="100000" value="0" aria-label="Optional max jobs">
+        <button class="btn btn-primary btn-sm" type="submit">Start Hourly Reviewed Alias Refresh</button>
+      </form>
+      {% if alias_refresh_task %}
+      <div class="mt-3" data-status-url="{% url 'task-status-api' alias_refresh_task.id %}" id="aliasRefreshTaskStatus">
+        <div class="flex gap-2">
+          <span class="badge badge-blue" data-task-status>{{ alias_refresh_task.status }}</span>
+          <span class="text-sm text-muted" data-task-notes>{{ alias_refresh_task.notes|default:"Queued" }}</span>
+        </div>
+        <div class="task-progress-track mt-2">
+          <div class="task-progress-fill" data-task-progress-fill style="width:{{ alias_refresh_task.progress }}%;"></div>
+        </div>
+        <div class="task-progress-meta">
+          <span data-task-progress-label>{{ alias_refresh_task.progress }}%</span>
+          <a href="{% url 'task-list' %}">Open Background Tasks</a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>Candidate Aliases</h2>
+          <div class="tab-explainer">Approve only if the alias should mean the canonical skill in future extraction and scoring.</div>
+        </div>
+        <span class="badge badge-gray">{{ discovered_alias_count }} newly discovered this view</span>
+      </div>
+      {% for alias in alias_candidate_rows %}
+      <div class="candidate-card">
+        <div class="candidate-head">
+          <div>
+            <div class="candidate-title">{{ alias.alias }} <span class="text-muted">-></span> {{ alias.canonical_skill }}</div>
+            <div class="candidate-meta">Evidence {{ alias.evidence_count }} - {{ alias.source }}{% if alias.created_from_doc_id %} - {{ alias.created_from_doc_id }}{% endif %}</div>
+          </div>
+          <span class="chip">{{ alias.status }}</span>
+        </div>
+        {% if alias.created_from_text %}
+        <div class="candidate-meta">{{ alias.created_from_text|truncatechars:220 }}</div>
+        {% endif %}
+        <form class="candidate-edit mt-2" method="post" action="{% url 'skill-alias-review' %}">
+          {% csrf_token %}
+          <input type="hidden" name="next" value="{% url 'human-oversight' %}#aliases">
+          <input type="hidden" name="alias_id" value="{{ alias.id }}">
+          <input class="form-control" name="canonical_skill" value="{{ alias.canonical_skill }}" aria-label="Canonical skill">
+          <input class="form-control" name="alias" value="{{ alias.alias }}" aria-label="Alias">
+          <button class="btn btn-primary btn-sm" name="action" value="approve" type="submit">Approve</button>
+          <button class="btn btn-danger btn-sm" name="action" value="reject" type="submit">Reject</button>
+        </form>
+      </div>
+      {% empty %}
+      <div class="empty-text">No alias candidates are waiting right now.</div>
+      {% endfor %}
+    </div>
+
+    <div class="oversight-panel">
+      <div class="section-hd">
+        <div>
+          <h2>Approved Aliases</h2>
+          <div class="tab-explainer">These aliases are active for the next extractor instance and therefore for the next background analysis run.</div>
+        </div>
+        <span class="badge badge-green">{{ alias_approved_rows|length }} shown</span>
+      </div>
+      <div class="learned-list">
+        {% for alias in alias_approved_rows %}
+        <span class="chip chip-match">{{ alias.alias }} -> {{ alias.canonical_skill }}</span>
+        {% empty %}
+        <div class="empty-text">No approved aliases yet.</div>
+        {% endfor %}
+      </div>
+    </div>
+</div>
+
 <div class="tab-panel" data-tab-panel="learned">
     <div class="oversight-panel">
       <div class="section-hd">
@@ -430,10 +538,10 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') closeEvidenceModal();
 });
 </script>
-{% if verification_task %}
+{% if verification_task or alias_refresh_task %}
 <script>
-function pollVerificationTask() {
-  const panel = document.getElementById('verificationTaskStatus');
+function pollOversightTask(panelId) {
+  const panel = document.getElementById(panelId);
   if (!panel) return;
   fetch(panel.dataset.statusUrl, { headers:{ 'Accept':'application/json' } })
     .then(response => response.json())
@@ -444,14 +552,15 @@ function pollVerificationTask() {
       panel.querySelector('[data-task-progress-fill]').style.width = `${pct}%`;
       panel.querySelector('[data-task-progress-label]').textContent = `${pct}%`;
       if (data.status === 'PENDING' || data.status === 'STARTED') {
-        setTimeout(pollVerificationTask, 1500);
+        setTimeout(() => pollOversightTask(panelId), 3000);
       } else {
         setTimeout(() => location.reload(), 1200);
       }
     })
-    .catch(() => setTimeout(pollVerificationTask, 3000));
+    .catch(() => setTimeout(() => pollOversightTask(panelId), 5000));
 }
-pollVerificationTask();
+pollOversightTask('verificationTaskStatus');
+pollOversightTask('aliasRefreshTaskStatus');
 </script>
 {% endif %}
 {% endblock %}

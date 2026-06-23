@@ -6,6 +6,7 @@ from io import BytesIO
 import json
 from pathlib import Path
 import re
+import zipfile
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -24,7 +25,7 @@ from django.views.generic import TemplateView, ListView
 from courses.models import Course, Module
 from jobs.models import JobAdvert
 from jobs.ingestion import extract_advert_metadata, extract_advert_sections, parse_advert_date
-from analysis.models import AnalysisRun, GapResult, SkillMatrix, TaskRecord
+from analysis.models import AnalysisRun, GapResult, SkillAlias, SkillMatrix, TaskRecord
 from analysis.course_skill_ner import collect_training_examples
 from analysis.nlp_pipeline import BUSINESS_SKILL_EXCLUDED_TERMS
 from analysis.rag_chatbot import (
@@ -41,8 +42,10 @@ from analysis.tasks import (
     start_skill_verification_task,
     import_csv_task,
     fetch_adzuna_task,
+    start_research_paper_task,
     start_continuous_adzuna_task,
     start_continuous_job_task,
+    start_reviewed_alias_refresh_task,
     stop_task,
 )
 
@@ -659,12 +662,14 @@ def hydrate_skill_entities(obj):
 def update_entity_collection(obj, entity_id, chunk_id, updates):
     entities = hydrate_skill_entities(obj)
     changed = False
+    reviewed_entity = None
     for entity in entities:
         if not isinstance(entity, dict):
             continue
         if entity.get("chunk_id") == chunk_id or entity.get("id") == entity_id:
             entity.update({key: value for key, value in updates.items() if value != ""})
             entity["label_status"] = "reviewed"
+            reviewed_entity = entity
             changed = True
             break
     if not changed:
@@ -672,6 +677,18 @@ def update_entity_collection(obj, entity_id, chunk_id, updates):
     obj.skill_entities = entities
     obj.skills_extracted = active_entity_skill_names(entities)
     obj.save(update_fields=["skill_entities", "skills_extracted"])
+    if reviewed_entity and reviewed_entity.get("label") != "exclude" and reviewed_entity.get("skill_type") != "exclude":
+        source_type = "job" if isinstance(obj, JobAdvert) else "module"
+        alias = reviewed_entity.get("text") or reviewed_entity.get("pattern") or ""
+        upsert_skill_alias(
+            reviewed_entity.get("skill"),
+            alias,
+            source="human_review",
+            status="approved",
+            confidence=reviewed_entity.get("confidence") or 1.0,
+            evidence_text=alias,
+            doc_id=f"{source_type}:{obj.id}:{reviewed_entity.get('chunk_id') or reviewed_entity.get('id')}",
+        )
     return True
 
 
@@ -717,6 +734,16 @@ def create_entity_in_collection(obj, updates):
     obj.skill_entities = entities
     obj.skills_extracted = active_entity_skill_names(entities)
     obj.save(update_fields=["skill_entities", "skills_extracted"])
+    if entity.get("label") != "exclude" and entity.get("skill_type") != "exclude":
+        upsert_skill_alias(
+            entity.get("skill"),
+            entity.get("text"),
+            source="human_review",
+            status="approved",
+            confidence=entity.get("confidence") or 1.0,
+            evidence_text=entity.get("text") or "",
+            doc_id=f"{source_type}:{obj.id}:{entity.get('chunk_id')}",
+        )
     return True
 
 
@@ -759,6 +786,16 @@ def approve_candidate_entities(source_type="all"):
                 entity["label"] = entity.get("label") or "SKILL"
                 entity["tier"] = "reviewed" if entity.get("tier") == "candidate" else entity.get("tier", "reviewed")
                 entity["label_status"] = "reviewed"
+                source_label = "job" if model is JobAdvert else "module"
+                upsert_skill_alias(
+                    entity.get("skill"),
+                    entity.get("text"),
+                    source="human_review",
+                    status="approved",
+                    confidence=entity.get("confidence") or 1.0,
+                    evidence_text=entity.get("text") or "",
+                    doc_id=f"{source_label}:{obj.id}:{entity.get('chunk_id') or entity.get('id')}",
+                )
                 approved += 1
                 changed = True
             if changed:
@@ -1000,6 +1037,112 @@ def review_status_counts(rows):
     }
 
 
+def canonical_skill_text(value):
+    return " ".join(str(value or "").lower().replace("-", " ").split())
+
+
+def is_alias_candidate_pair(canonical, alias):
+    canonical = canonical_skill_text(canonical)
+    alias = canonical_skill_text(alias)
+    if not canonical or not alias or canonical == alias:
+        return False
+    if len(alias) < 2 or alias in BUSINESS_SKILL_EXCLUDED_TERMS:
+        return False
+    return True
+
+
+def upsert_skill_alias(canonical, alias, source="evidence", status="candidate", confidence=0.0, evidence_text="", doc_id="", increment_existing=True):
+    canonical = canonical_skill_text(canonical)
+    alias = canonical_skill_text(alias)
+    if not is_alias_candidate_pair(canonical, alias):
+        return None, False
+    now = timezone.now()
+    try:
+        obj, created = SkillAlias.objects.get_or_create(
+            canonical_skill=canonical,
+            alias=alias,
+            defaults={
+                "source": source,
+                "status": status,
+                "confidence": confidence or 0.0,
+                "evidence_count": 1,
+                "created_from_text": evidence_text[:1000],
+                "created_from_doc_id": doc_id[:120],
+                "last_seen_at": now,
+                "reviewed_at": now if status in {"approved", "rejected"} else None,
+            },
+        )
+    except IntegrityError:
+        obj = SkillAlias.objects.get(canonical_skill=canonical, alias=alias)
+        created = False
+    if not created:
+        if increment_existing:
+            obj.evidence_count = max(1, obj.evidence_count + 1)
+        obj.last_seen_at = now
+        if confidence is not None:
+            obj.confidence = max(obj.confidence or 0.0, confidence or 0.0)
+        if evidence_text and not obj.created_from_text:
+            obj.created_from_text = evidence_text[:1000]
+        if doc_id and not obj.created_from_doc_id:
+            obj.created_from_doc_id = doc_id[:120]
+        if status == "approved" and obj.status != "approved":
+            obj.status = "approved"
+            obj.source = source
+            obj.reviewed_at = now
+        elif status == "rejected" and obj.status != "approved":
+            obj.status = "rejected"
+            obj.reviewed_at = now
+        obj.save(update_fields=[
+            "evidence_count", "last_seen_at", "confidence", "created_from_text",
+            "created_from_doc_id", "status", "source", "reviewed_at", "updated_at",
+        ])
+    return obj, created
+
+
+def alias_from_entity_row(row, status="candidate"):
+    return upsert_skill_alias(
+        row.get("skill"),
+        row.get("text"),
+        source="human_review" if status == "approved" else "evidence",
+        status=status,
+        confidence=row.get("confidence") or 0.0,
+        evidence_text=row.get("context") or row.get("text") or "",
+        doc_id=row.get("unique_key") or "",
+        increment_existing=status != "candidate",
+    )
+
+
+def discover_skill_alias_candidates(limit=300):
+    created = 0
+    for row in iter_skill_entity_rows():
+        if row.get("label") == "exclude" or row.get("skill_type") == "exclude":
+            continue
+        if row.get("label_status") == "candidate":
+            continue
+        if not is_alias_candidate_pair(row.get("skill"), row.get("text")):
+            continue
+        _obj, was_created = alias_from_entity_row(row, status="candidate")
+        if was_created:
+            created += 1
+        if created >= limit:
+            break
+    return created
+
+
+def alias_review_counts():
+    counts = Counter(SkillAlias.objects.values_list("status", flat=True))
+    return {
+        "candidate": counts.get("candidate", 0),
+        "approved": counts.get("approved", 0),
+        "rejected": counts.get("rejected", 0),
+        "total": sum(counts.values()),
+    }
+
+
+def alias_review_rows(status="candidate", limit=40):
+    return list(SkillAlias.objects.filter(status=status).order_by("-evidence_count", "canonical_skill", "alias")[:limit])
+
+
 def oversight_candidate_rows(limit=60):
     rows = [
         row for row in iter_skill_entity_rows()
@@ -1038,11 +1181,16 @@ class HumanOversightView(TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
+        discovered_aliases = discover_skill_alias_candidates()
         all_rows = list(iter_skill_entity_rows())
         candidate_rows = oversight_candidate_rows()
         suspicious_records = oversight_suspicious_records()
         ctx.update({
             "status_counts": review_status_counts(all_rows),
+            "alias_counts": alias_review_counts(),
+            "alias_candidate_rows": alias_review_rows("candidate"),
+            "alias_approved_rows": alias_review_rows("approved", limit=24),
+            "discovered_alias_count": discovered_aliases,
             "candidate_rows": candidate_rows,
             "recent_reviewed_rows": oversight_recent_reviewed_rows(),
             "suspicious_records": suspicious_records,
@@ -1054,6 +1202,10 @@ class HumanOversightView(TemplateView):
             "suspicious_module_count": sum(1 for record in suspicious_records if record["source_type"] == "module"),
             "verification_task": TaskRecord.objects.filter(
                 run_name__startswith="Skill Verification",
+                status__in=["PENDING", "STARTED"],
+            ).order_by("-created_at").first(),
+            "alias_refresh_task": TaskRecord.objects.filter(
+                run_name__startswith="Reviewed Alias Hourly Refresh",
                 status__in=["PENDING", "STARTED"],
             ).order_by("-created_at").first(),
         })
@@ -1079,6 +1231,95 @@ class HumanOversightView(TemplateView):
             "Skill verification queued. You can keep working while it runs in Background Tasks.",
         )
         return redirect("task-list")
+
+
+class ReviewedAliasRefreshView(View):
+    def post(self, request):
+        existing = TaskRecord.objects.filter(
+            run_name__startswith="Reviewed Alias Hourly Refresh",
+            status__in=["PENDING", "STARTED"],
+        ).order_by("-created_at").first()
+        if existing:
+            messages.info(request, "Reviewed alias refresh is already running in Background Tasks.")
+            return redirect("task-list")
+
+        interval_seconds = bounded_int(request.POST.get("interval_seconds"), 3600, 60, 86400)
+        max_jobs = bounded_int(request.POST.get("max_jobs"), 0, 0, 100000) or None
+        record = TaskRecord.objects.create(run_name=f"Reviewed Alias Hourly Refresh: every {interval_seconds // 60} min")
+        start_reviewed_alias_refresh_task(
+            interval_seconds=interval_seconds,
+            record_id=record.id,
+            max_jobs=max_jobs,
+        )
+        messages.success(request, "Reviewed alias refresh started. It will rerun analysis in the background until paused.")
+        return redirect("task-list")
+
+
+class SkillAliasReviewView(View):
+    def post(self, request):
+        alias_id = bounded_int(request.POST.get("alias_id"), 0, 0, 100000000)
+        action = request.POST.get("action", "").strip()
+        next_url = request.POST.get("next") or reverse("human-oversight")
+        alias = get_object_or_404(SkillAlias, pk=alias_id)
+        if action == "approve":
+            canonical = canonical_skill_text(request.POST.get("canonical_skill") or alias.canonical_skill)
+            alias_text = canonical_skill_text(request.POST.get("alias") or alias.alias)
+            if not is_alias_candidate_pair(canonical, alias_text):
+                messages.error(request, "Alias and canonical skill must be different useful terms.")
+                return redirect(next_url)
+            existing = SkillAlias.objects.filter(canonical_skill=canonical, alias=alias_text).exclude(pk=alias.pk).first()
+            if existing:
+                existing.evidence_count = max(existing.evidence_count, alias.evidence_count) + 1
+                existing.status = "approved"
+                existing.source = "human_review"
+                existing.reviewed_at = timezone.now()
+                existing.confidence = max(existing.confidence or 0.0, alias.confidence or 0.0, 1.0)
+                existing.save(update_fields=["evidence_count", "status", "source", "reviewed_at", "confidence", "updated_at"])
+                alias.delete()
+                messages.success(request, f"Approved alias '{existing.alias}' for '{existing.canonical_skill}'. Rerun analysis to apply it.")
+                return redirect(next_url)
+            alias.canonical_skill = canonical
+            alias.alias = alias_text
+            alias.status = "approved"
+            alias.source = "human_review"
+            alias.reviewed_at = timezone.now()
+            alias.confidence = max(alias.confidence or 0.0, 1.0)
+            alias.save(update_fields=[
+                "canonical_skill", "alias", "status", "source", "reviewed_at", "confidence", "updated_at",
+            ])
+            messages.success(request, f"Approved alias '{alias.alias}' for '{alias.canonical_skill}'. Rerun analysis to apply it.")
+        elif action == "reject":
+            alias.status = "rejected"
+            alias.reviewed_at = timezone.now()
+            alias.save(update_fields=["status", "reviewed_at", "updated_at"])
+            messages.success(request, f"Rejected alias '{alias.alias}'.")
+        else:
+            messages.error(request, "Choose approve or reject for the alias.")
+        return redirect(next_url)
+
+
+class SkillAliasCreateView(View):
+    def post(self, request):
+        next_url = request.POST.get("next") or reverse("human-oversight")
+        canonical = canonical_skill_text(request.POST.get("canonical_skill"))
+        alias = canonical_skill_text(request.POST.get("alias"))
+        status = request.POST.get("status", "approved")
+        if status not in {"candidate", "approved"}:
+            status = "approved"
+        obj, _created = upsert_skill_alias(
+            canonical,
+            alias,
+            source="manual",
+            status=status,
+            confidence=1.0 if status == "approved" else 0.5,
+            evidence_text=request.POST.get("evidence", ""),
+            doc_id="manual",
+        )
+        if obj:
+            messages.success(request, f"Saved alias '{obj.alias}' for '{obj.canonical_skill}'. Rerun analysis to apply approved aliases.")
+        else:
+            messages.error(request, "Add a useful alias that is different from the canonical skill.")
+        return redirect(next_url)
 
 
 class SkillVectorSpaceView(TemplateView):
@@ -1621,6 +1862,38 @@ class AnalysisResultsView(TemplateView):
         return ctx
 
 
+class ModelValidationView(TemplateView):
+    template_name = "analysis/model_validation.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        runs = AnalysisRun.objects.all()
+        run_id = self.request.GET.get("run")
+        selected_run = get_object_or_404(AnalysisRun, id=run_id) if run_id else runs.first()
+        threshold = bounded_int(self.request.GET.get("threshold"), 55, 0, 100)
+        sample_limit = bounded_int(self.request.GET.get("limit"), 20, 5, 200)
+
+        ctx.update({
+            "runs": runs,
+            "selected_run": selected_run,
+            "threshold": threshold,
+            "sample_limit": sample_limit,
+        })
+        if not selected_run:
+            return ctx
+
+        results = list(
+            GapResult.objects
+            .filter(run=selected_run)
+            .select_related("course", "job")
+            .prefetch_related("course__modules")
+            .order_by("-similarity_score")
+        )
+        visual_data = build_results_visual_data(results, threshold)
+        ctx.update(build_model_validation_notebook(results, visual_data, sample_limit))
+        return ctx
+
+
 def build_results_visual_data(results, threshold):
     bands = [
         {"key": "0-20", "low": 0, "high": 20},
@@ -1771,11 +2044,231 @@ def build_results_visual_data(results, threshold):
         "score_bands": [band["key"] for band in bands],
         "heatmap_rows": heatmap_rows,
         "plotly_heatmap_rows": plotly_heatmap_rows[:500],
+        "skill_correlation_matrix": build_skill_correlation_matrix(results),
+        "role_skill_divergence": build_role_skill_divergence(results),
         "scatter_points": scatter_points,
         "school_summaries": school_summaries,
         "school_recommendations": school_recommendations,
         "course_recommendations": course_recommendations[:12],
         "skill_suggestion_matrix": build_skill_suggestion_matrix(results),
+    }
+
+
+def score_weights():
+    semantic_weight = float(getattr(settings, "SEMANTIC_SCORE_WEIGHT", 0.75))
+    skill_weight = float(getattr(settings, "SKILL_SCORE_WEIGHT", 0.25))
+    confidence_weight = float(getattr(settings, "CONFIDENCE_SCORE_WEIGHT", 0.15))
+    tree_weight = float(getattr(settings, "DECISION_TREE_SCORE_WEIGHT", 0.10))
+    total = max(0.01, semantic_weight + skill_weight + confidence_weight + tree_weight)
+    return {
+        "semantic": semantic_weight,
+        "skill": skill_weight,
+        "confidence": confidence_weight,
+        "tree": tree_weight,
+        "total": total,
+    }
+
+
+def build_model_validation_notebook(results, visual_data, sample_limit=20):
+    sampled_results = attach_result_skill_evidence(list(results[:sample_limit]), limit=18)
+    weights = score_weights()
+
+    score_rows = []
+    for result in sampled_results:
+        breakdown = result.score_breakdown or {}
+        semantic = float(breakdown.get("semantic_score") or 0)
+        skill = float(breakdown.get("skill_score") or 0)
+        confidence = float(breakdown.get("confidence_score") or 0)
+        tree = float(breakdown.get("decision_tree_score") or 0)
+        calculated = (
+            (weights["semantic"] * semantic)
+            + (weights["skill"] * skill)
+            + (weights["confidence"] * confidence)
+            + (weights["tree"] * tree)
+        ) / weights["total"]
+        job_skill_count = len(set((result.matched_skills or []) + (result.missing_skills or [])))
+        score_rows.append({
+            "course": result.course.code or result.course.name,
+            "course_name": result.course.name,
+            "job": result.job.title,
+            "company": result.job.company or "",
+            "stored_score": result.similarity_percent,
+            "calculated_score": round(calculated * 100, 2),
+            "semantic": round(semantic, 4),
+            "skill": round(skill, 4),
+            "confidence": round(confidence, 4),
+            "tree": round(tree, 4),
+            "matched_count": len(result.matched_skills or []),
+            "job_skill_count": job_skill_count,
+            "matched_skills": result.matched_skills or [],
+            "missing_skills": result.missing_skills or [],
+            "job_display_skills": result.job_display_skills,
+            "course_display_skills": result.course_display_skills,
+        })
+
+    matrix = visual_data.get("skill_correlation_matrix", {})
+    matrix_skills = matrix.get("skills", [])
+    matrix_values = matrix.get("values", [])
+    correlation_cells = []
+    for row_index, row_skill in enumerate(matrix_skills[:8]):
+        for col_index, col_skill in enumerate(matrix_skills[:8]):
+            value_row = matrix_values[row_index] if row_index < len(matrix_values) else []
+            correlation_cells.append({
+                "row_skill": row_skill,
+                "column_skill": col_skill,
+                "value": value_row[col_index] if col_index < len(value_row) else 0,
+            })
+
+    divergence_cells = []
+    for role in (visual_data.get("role_skill_divergence", {}).get("roles") or [])[:8]:
+        for skill, value in zip(role.get("skills", [])[:6], role.get("values", [])[:6]):
+            divergence_cells.append({
+                "role": role["role"],
+                "skill": skill,
+                "value": value,
+                "profile_count": role["profile_count"],
+            })
+
+    return {
+        "result_count": len(results),
+        "sampled_results": sampled_results,
+        "score_rows": score_rows,
+        "weights": weights,
+        "skill_correlation_matrix": matrix,
+        "correlation_cells": correlation_cells[:32],
+        "role_skill_divergence": visual_data.get("role_skill_divergence", {}),
+        "divergence_cells": divergence_cells[:32],
+        "skill_suggestion_matrix": visual_data.get("skill_suggestion_matrix", []),
+    }
+
+
+def build_skill_correlation_matrix(results, limit=16):
+    profiles = {}
+    for result in results:
+        skills = object_skill_names(
+            result.job,
+            fallback_skills=(result.matched_skills or []) + (result.missing_skills or []),
+            limit=80,
+        )
+        if not skills:
+            skills = [
+                " ".join(str(skill or "").lower().replace("-", " ").split())
+                for skill in (result.matched_skills or []) + (result.missing_skills or [])
+                if skill
+            ]
+        profile = profiles.setdefault(result.job_id, set())
+        profile.update(skill for skill in skills if skill)
+
+    profile_skills = [skills for skills in profiles.values() if skills]
+    frequency = Counter(skill for skills in profile_skills for skill in skills)
+    selected_skills = [
+        skill
+        for skill, count in frequency.most_common(limit)
+        if count > 0
+    ]
+
+    def pearson(left_values, right_values):
+        count = len(left_values)
+        if not count:
+            return 0.0
+        left_mean = sum(left_values) / count
+        right_mean = sum(right_values) / count
+        numerator = sum((left - left_mean) * (right - right_mean) for left, right in zip(left_values, right_values))
+        left_var = sum((left - left_mean) ** 2 for left in left_values)
+        right_var = sum((right - right_mean) ** 2 for right in right_values)
+        denominator = (left_var * right_var) ** 0.5
+        return numerator / denominator if denominator else 0.0
+
+    vectors = {
+        skill: [1 if skill in profile else 0 for profile in profile_skills]
+        for skill in selected_skills
+    }
+    values = []
+    labels = []
+    for row_skill in selected_skills:
+        value_row = []
+        label_row = []
+        for col_skill in selected_skills:
+            value = 1.0 if row_skill == col_skill else pearson(vectors[row_skill], vectors[col_skill])
+            value = max(-1.0, min(1.0, value))
+            value_row.append(round(value, 2))
+            label_row.append(f"{value:.2f}")
+        values.append(value_row)
+        labels.append(label_row)
+
+    return {
+        "skills": selected_skills,
+        "values": values,
+        "labels": labels,
+        "profile_count": len(profile_skills),
+    }
+
+
+def build_role_skill_divergence(results, role_limit=120, skill_limit=9):
+    job_profiles = {}
+    for result in results:
+        skills = object_skill_names(
+            result.job,
+            fallback_skills=(result.matched_skills or []) + (result.missing_skills or []),
+            limit=80,
+        )
+        if not skills:
+            skills = [
+                " ".join(str(skill or "").lower().replace("-", " ").split())
+                for skill in (result.matched_skills or []) + (result.missing_skills or [])
+                if skill
+            ]
+        profile = job_profiles.setdefault(result.job_id, {
+            "role": " ".join(str(result.job.title or "Untitled role").split()),
+            "skills": set(),
+        })
+        profile["skills"].update(skill for skill in skills if skill)
+
+    profiles = [profile for profile in job_profiles.values() if profile["skills"]]
+    global_counts = Counter(skill for profile in profiles for skill in profile["skills"])
+    global_total = sum(global_counts.values())
+    if not profiles or not global_total:
+        return {"roles": [], "profile_count": 0}
+
+    roles = {}
+    for profile in profiles:
+        role_item = roles.setdefault(profile["role"], {
+            "profile_count": 0,
+            "counts": Counter(),
+        })
+        role_item["profile_count"] += 1
+        role_item["counts"].update(profile["skills"])
+
+    rows = []
+    for role, item in roles.items():
+        role_total = sum(item["counts"].values())
+        skills = set(item["counts"]) | set(global_counts)
+        values = []
+        for skill in skills:
+            role_share = item["counts"].get(skill, 0) / max(1, role_total)
+            global_share = global_counts.get(skill, 0) / global_total
+            value = role_share - global_share
+            if abs(value) < 0.005:
+                continue
+            values.append({
+                "skill": skill,
+                "value": round(value, 2),
+                "label": f"{value:.2f}",
+            })
+        selected = sorted(values, key=lambda row: (-abs(row["value"]), row["skill"]))[:skill_limit]
+        selected = sorted(selected, key=lambda row: row["value"])
+        if selected:
+            rows.append({
+                "role": role,
+                "profile_count": item["profile_count"],
+                "skills": [row["skill"] for row in selected],
+                "values": [row["value"] for row in selected],
+                "labels": [row["label"] for row in selected],
+            })
+
+    return {
+        "roles": sorted(rows, key=lambda row: (-row["profile_count"], row["role"]))[:role_limit],
+        "profile_count": len(profiles),
     }
 
 
@@ -1811,6 +2304,21 @@ class AnalysisVisualCsvExportView(View):
         run_name = selected_run.name if selected_run else ""
         visual_data = build_results_visual_data(results, threshold)
 
+        matrix = visual_data["skill_correlation_matrix"]
+        for row_index, row_skill in enumerate(matrix["skills"]):
+            for col_index, col_skill in enumerate(matrix["skills"]):
+                writer.writerow([
+                    "skill_correlation_heatmap", run_name, "", row_skill, request.GET.get("school", "").strip() or "Current selection",
+                    "", col_skill, "", "pearson_correlation", matrix["values"][row_index][col_index], "", "", "",
+                    "", "", f"Pearson correlation across {matrix['profile_count']} role requirement profiles",
+                ])
+        for role in visual_data["role_skill_divergence"]["roles"]:
+            for skill, value in zip(role["skills"], role["values"]):
+                writer.writerow([
+                    "role_skill_divergence", run_name, "", role["role"], request.GET.get("school", "").strip() or "Current selection",
+                    "", "", "", skill, value, "", "", "", "", "",
+                    f"Skill share difference from overall job-market baseline; role_profiles={role['profile_count']}",
+                ])
         for row in visual_data["plotly_heatmap_rows"]:
             writer.writerow([
                 "course_to_job_gap_heatmap", run_name, row["course_id"], row["course_name"], row["school"],
@@ -2211,19 +2719,95 @@ class DashboardVisualCsvExportView(View):
 class TechnicalReportExportView(View):
     def get(self, request):
         try:
-            from dashboard.researchpaper import REPORT_FILENAME, build_research_paper_docx
+            from dashboard.researchpaper import REPORT_FILENAME
         except ImportError:
             return HttpResponse("python-docx is not installed.", status=500)
 
         run = latest_visual_run()
-        all_results = list(GapResult.objects.filter(run=run).select_related("course", "job")) if run else []
-        visual_data = build_results_visual_data(all_results, 55)
-        output = build_research_paper_docx(run, visual_data)
-        response = HttpResponse(
-            output.getvalue(),
+        run_label = run.name if run else "No analysis run"
+        record = TaskRecord.objects.create(run_name=f"Research Paper Export: {run_label}")
+        start_research_paper_task(record_id=record.id, run_id=run.id if run else None)
+        messages.success(
+            request,
+            f"'{REPORT_FILENAME}' is being generated in the background. You can download it from Tasks when it is ready.",
+        )
+        return redirect("task-list")
+
+
+def ensure_report_visual_assets(run):
+    from dashboard.researchpaper import build_research_paper_docx, paper_artifact_dir
+
+    results = list(GapResult.objects.filter(run=run).select_related("course", "job")) if run else []
+    visual_data = build_results_visual_data(results, 55)
+    asset_dir = paper_artifact_dir(run)
+    if not list(asset_dir.glob("*.png")):
+        build_research_paper_docx(run, visual_data)
+    return asset_dir
+
+
+class TechnicalReportDownloadView(View):
+    def get(self, request, pk):
+        try:
+            from dashboard.researchpaper import REPORT_FILENAME
+        except ImportError:
+            return HttpResponse("python-docx is not installed.", status=500)
+
+        task = get_object_or_404(TaskRecord, pk=pk, status="SUCCESS")
+        if not task.run_name.startswith("Research Paper Export:") or not task.task_id:
+            raise Http404("Report is not available for this task.")
+
+        relative_path = Path(task.task_id)
+        if relative_path.is_absolute() or ".." in relative_path.parts:
+            raise Http404("Report path is invalid.")
+        report_path = Path(settings.BASE_DIR) / relative_path
+        if not report_path.exists():
+            raise Http404("Report file was not found.")
+
+        response = FileResponse(
+            report_path.open("rb"),
             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
         response["Content-Disposition"] = f'attachment; filename="{REPORT_FILENAME}"'
+        return response
+
+
+class TechnicalReportVisualDownloadView(View):
+    def get(self, request, run_id, image_name):
+        from dashboard.researchpaper import safe_filename
+
+        run = get_object_or_404(AnalysisRun, pk=run_id)
+        safe_name = safe_filename(image_name)
+        if safe_name != image_name:
+            raise Http404("Invalid visual name.")
+        asset_dir = ensure_report_visual_assets(run)
+        image_path = asset_dir / f"{safe_name}.png"
+        if not image_path.exists():
+            raise Http404("Visual image was not found.")
+        return FileResponse(
+            image_path.open("rb"),
+            as_attachment=True,
+            filename=image_path.name,
+            content_type="image/png",
+        )
+
+
+class TechnicalReportVisualArchiveView(View):
+    def get(self, request, run_id):
+        run = get_object_or_404(AnalysisRun, pk=run_id)
+        asset_dir = ensure_report_visual_assets(run)
+        image_paths = sorted(asset_dir.glob("*.png"))
+        if not image_paths:
+            raise Http404("No report visuals are available.")
+        archive = BytesIO()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_file:
+            for image_path in image_paths:
+                zip_file.write(image_path, image_path.name)
+            manifest = asset_dir.parent / "visual_manifest.md"
+            if manifest.exists():
+                zip_file.write(manifest, manifest.name)
+        archive.seek(0)
+        response = HttpResponse(archive.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="curriculummatch-report-visuals-run-{run.id}.zip"'
         return response
 
 
@@ -2242,12 +2826,16 @@ class TaskListView(ListView):
 def task_status_api(request, pk):
     r = get_object_or_404(TaskRecord, pk=pk)
     r = mark_stale_task_if_needed(r)
+    download_url = ""
+    if r.status == "SUCCESS" and r.run_name.startswith("Research Paper Export:") and r.task_id:
+        download_url = reverse("technical-report-download", args=[r.id])
     return JsonResponse({
         "id": r.id,
         "run_name": r.run_name,
         "status": r.status,
         "progress": r.progress,
         "notes": r.notes,
+        "download_url": download_url,
         "debug_hint": task_debug_hint(r.notes) if r.status == "FAILURE" else "",
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
         "finished_at": r.finished_at.isoformat() if r.finished_at else None,

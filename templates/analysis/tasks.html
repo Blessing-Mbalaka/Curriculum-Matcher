@@ -20,6 +20,7 @@
         <th>Started</th>
         <th>Finished</th>
         <th>Notes</th>
+        <th>Action</th>
       </tr>
     </thead>
     <tbody>
@@ -47,11 +48,18 @@
         </td>
         <td class="text-sm text-muted">{{ task.created_at|date:"d M Y H:i" }}</td>
         <td class="text-sm text-muted">{{ task.finished_at|date:"d M Y H:i"|default:"None" }}</td>
-        <td class="text-sm text-muted">{{ task.notes|truncatechars:80|default:"None" }}</td>
+        <td class="text-sm text-muted" data-task-notes>{{ task.notes|truncatechars:80|default:"None" }}</td>
+        <td data-task-action>
+          {% if task.status == "SUCCESS" and task.run_name|slice:":22" == "Research Paper Export:" and task.task_id %}
+          <a href="{% url 'technical-report-download' task.id %}" class="btn btn-outline">Download</a>
+          {% else %}
+          <span class="text-sm text-muted">-</span>
+          {% endif %}
+        </td>
       </tr>
       {% empty %}
       <tr>
-        <td colspan="6">
+        <td colspan="7">
           <div class="empty">
             <div class="empty-title">No tasks yet</div>
             <div class="empty-text">Tasks appear here when you import jobs or run analysis.</div>
@@ -71,7 +79,7 @@
 </div>
 {% endif %}
 {% if has_running %}
-<p class="text-sm text-muted mt-4">Auto-refreshing every 5 seconds.</p>
+<p class="text-sm text-muted mt-4">Updating task progress in place.</p>
 {% endif %}
 {% endblock %}
 {% block extra_js %}
@@ -90,12 +98,16 @@ function updateTaskRow(row, data) {
   const fill = row.querySelector('[data-task-progress-fill]');
   const label = row.querySelector('[data-task-progress-label]');
   const notes = row.querySelector('[data-task-notes]');
+  const action = row.querySelector('[data-task-action]');
 
   status.textContent = data.run_name?.startsWith('Jobs Only') && data.status === 'STARTED' ? 'RUNNING' : data.status;
   status.className = statusClass(data.status);
   fill.style.width = `${pct}%`;
   label.textContent = `${pct}%`;
   if (notes) notes.textContent = data.notes || '-';
+  if (action && data.download_url) {
+    action.innerHTML = `<a href="${data.download_url}" class="btn btn-outline">Download</a>`;
+  }
 }
 
 function pollTaskRow(row) {
@@ -105,8 +117,6 @@ function pollTaskRow(row) {
       updateTaskRow(row, data);
       if (data.status === 'PENDING' || data.status === 'STARTED') {
         setTimeout(() => pollTaskRow(row), 1500);
-      } else if (data.status === 'SUCCESS') {
-        setTimeout(() => location.reload(), 1200);
       }
     })
     .catch(() => setTimeout(() => pollTaskRow(row), 3000));
