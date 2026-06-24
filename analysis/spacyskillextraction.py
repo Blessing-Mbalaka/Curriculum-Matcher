@@ -20,8 +20,11 @@ from .nlp_pipeline import BUSINESS_SKILL_EXCLUDED_TERMS, SKILL_KEYWORDS, extract
 
 logger = logging.getLogger(__name__)
 
-
+ #these are just a few examples of aliases for common skills. In practice, this dictionary can be expanded to include more aliases for various skills.
+#it uses a deep learning model to identify skills and their aliases, which can be used to improve the accuracy of skill extraction from text.
+#these candidates are human reviewed and approved, and can be used to improve the accuracy of skill extraction from text.
 SKILL_ALIASES = {
+   
     "artificial intelligence": ["ai", "generative ai", "gen ai"],
     "business intelligence": ["bi", "business intelligence", "dashboards", "dashboarding"],
     "communication": ["written communication", "verbal communication", "interpersonal communication"],

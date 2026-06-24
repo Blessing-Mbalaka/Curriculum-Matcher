@@ -1,5 +1,6 @@
 from collections import Counter
 from io import BytesIO
+import os
 from pathlib import Path
 import re
 
@@ -122,6 +123,8 @@ def add_key_value_table(document, rows):
 def plotly_to_image(fig, width=1050, height=560):
     if fig is None:
         return None
+    if os.environ.get("CURRICULUMMATCH_ENABLE_NATIVE_PLOTLY_EXPORT", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return None
     try:
         return BytesIO(fig.to_image(format="png", width=width, height=height, scale=2))
     except Exception:
@@ -167,11 +170,32 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         text = str(text or "")
         return text if len(text) <= limit else f"{text[:limit - 1]}..."
 
+    def text_width(text, font):
+        bbox = font.getbbox(str(text or ""))
+        return max(0, bbox[2] - bbox[0])
+
     def palette(value, maximum, colours=("#fff7ed", "#fdba74", "#f58220", "#111111")):
         if maximum <= 0:
             return colours[0]
         ratio = max(0, min(1, value / maximum))
         return colours[min(len(colours) - 1, int(ratio * (len(colours) - 1)))]
+
+    def blend_hex(left, right, ratio):
+        ratio = max(0, min(1, ratio))
+        left = left.lstrip("#")
+        right = right.lstrip("#")
+        channels = []
+        for index in (0, 2, 4):
+            a = int(left[index:index + 2], 16)
+            b = int(right[index:index + 2], 16)
+            channels.append(round(a + (b - a) * ratio))
+        return "#" + "".join(f"{channel:02x}" for channel in channels)
+
+    def pearson_palette(value):
+        value = max(-1, min(1, float(value or 0)))
+        if value < 0:
+            return blend_hex("#3f6fa9", "#edf1f5", value + 1)
+        return blend_hex("#edf1f5", "#b92f24", value)
 
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
@@ -179,6 +203,32 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
     body_font = ImageFont.load_default(size=20)
     small_font = ImageFont.load_default(size=16)
     tiny_font = ImageFont.load_default(size=13)
+
+    def draw_rotated_text(position, text, font, fill="#333333", angle=45):
+        text = str(text or "")
+        if not text:
+            return
+        bbox = font.getbbox(text)
+        text_w = max(1, bbox[2] - bbox[0] + 8)
+        text_h = max(1, bbox[3] - bbox[1] + 8)
+        text_image = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
+        text_draw = ImageDraw.Draw(text_image)
+        text_draw.text((4, 4), text, fill=fill, font=font)
+        rotated = text_image.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+        px, py = position
+        image.paste(rotated, (int(px), int(py - rotated.height)), rotated)
+
+    def rotated_text_height(text, font, angle=45):
+        text = str(text or "")
+        if not text:
+            return 0
+        bbox = font.getbbox(text)
+        text_w = max(1, bbox[2] - bbox[0] + 8)
+        text_h = max(1, bbox[3] - bbox[1] + 8)
+        text_image = Image.new("RGBA", (text_w, text_h), (255, 255, 255, 0))
+        rotated = text_image.rotate(angle, expand=True, resample=Image.Resampling.BICUBIC)
+        return rotated.height
+
     x = 44
     y = 38
     draw.text((x, y), title, fill="#101010", font=title_font)
@@ -213,11 +263,20 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         if y_label:
             draw.text((18, top - 22), y_label, fill="#333333", font=small_font)
 
-    def legend(items, anchor_x=None, anchor_y=None):
+    def legend_size(items):
+        if not items:
+            return (0, 0)
+        content_w = max(text_width(label, small_font) for label, _colour in items)
+        return (content_w + 42, max(22, len(items) * 24))
+
+    def legend(items, anchor_x=None, anchor_y=None, padded=True):
         if not items:
             return
-        lx = anchor_x if anchor_x is not None else chart_right - 260
-        ly = anchor_y if anchor_y is not None else chart_top
+        box_w, box_h = legend_size(items)
+        lx = int(anchor_x if anchor_x is not None else chart_right - box_w - 12)
+        ly = int(anchor_y if anchor_y is not None else chart_top)
+        if padded:
+            draw.rounded_rectangle((lx - 10, ly - 8, lx + box_w + 8, ly + box_h + 6), radius=8, fill="white", outline="#e6dfd6", width=1)
         for index, (label, colour) in enumerate(items):
             item_y = ly + index * 24
             draw.rectangle((lx, item_y, lx + 14, item_y + 14), fill=colour)
@@ -234,7 +293,10 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         series_two = [max(0, value) for value in series_two]
         max_value = max(series_one + series_two + [1])
         y_label = headers[1] if len(headers) > 1 else "Value"
-        axes(max_value=max_value, x_label=headers[0] if headers else "", y_label="Records" if "record" in str(y_label).lower() else str(y_label))
+        rotate_labels = len(labels) > 8 or max((len(label) for label in labels), default=0) > 10
+        bottom_pad = 92 if rotate_labels else 0
+        local_bottom = chart_bottom - bottom_pad
+        axes(bottom=local_bottom, max_value=max_value, x_label=headers[0] if headers else "", y_label="Records" if "record" in str(y_label).lower() else str(y_label))
         bar_gap = 10
         usable_width = chart_right - chart_left - 24
         slot = max(18, usable_width / max(1, len(labels)))
@@ -245,11 +307,14 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
             colours = ["#0b0b0b", "#f58220"] if grouped else ["#f58220"]
             for series_index, value in enumerate(values):
                 left = base_x + series_index * (bar_width + 3)
-                bar_height = int((chart_bottom - chart_top - 34) * value / max_value)
-                draw.rectangle((left, chart_bottom - bar_height, left + bar_width, chart_bottom), fill=colours[series_index])
-                draw.text((left, chart_bottom - bar_height - 18), str(int(value)), fill="#333333", font=tiny_font)
-            for line_index, line in enumerate(wrap_text(label, 12)[:2]):
-                draw.text((base_x - 4, chart_bottom + 8 + line_index * 14), line, fill="#333333", font=tiny_font)
+                bar_height = int((local_bottom - chart_top - 34) * value / max_value)
+                draw.rectangle((left, local_bottom - bar_height, left + bar_width, local_bottom), fill=colours[series_index])
+                draw.text((left, local_bottom - bar_height - 18), str(int(value)), fill="#333333", font=tiny_font)
+            if rotate_labels:
+                draw_rotated_text((base_x - 2, chart_bottom - 4), short_text(label, 22), tiny_font, "#333333", angle=45)
+            else:
+                for line_index, line in enumerate(wrap_text(label, 12)[:2]):
+                    draw.text((base_x - 4, local_bottom + 8 + line_index * 14), line, fill="#333333", font=tiny_font)
         if grouped:
             legend([
                 ((headers or ["", "Series 1"])[1], "#0b0b0b"),
@@ -260,6 +325,7 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         if not rows:
             draw.text((chart_left, chart_top), "No heatmap data available.", fill="#706960", font=body_font)
             return
+        is_pearson = "pearson" in title_lower or any("pearson" in str(header).lower() for header in headers)
         row_labels = []
         col_labels = []
         values = {}
@@ -274,31 +340,56 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
             values[(left, col)] = value
         row_labels = row_labels[:18]
         col_labels = col_labels[:24]
-        max_value = max(values.values() or [1])
+        max_value = 1 if is_pearson else max(values.values() or [1])
         draw.text((chart_left, chart_top - 22), f"Y: {headers[0] if headers else 'Rows'}", fill="#333333", font=small_font)
         draw.text((chart_left + 360, chart_top - 22), f"X: {headers[1] if len(headers) > 1 else 'Columns'}", fill="#333333", font=small_font)
-        label_w = 230
-        top_label_h = 64
-        cell_w = max(30, min(78, (chart_right - chart_left - label_w) / max(1, len(col_labels))))
-        cell_h = max(24, min(42, (chart_bottom - chart_top - top_label_h) / max(1, len(row_labels))))
+        label_w = 270 if is_pearson else 230
+        top_label_h = 34 if is_pearson else 42
+        max_rotated_label_h = max(
+            [rotated_text_height(short_text(col, 18), tiny_font, angle=45) for col in col_labels] or [0]
+        ) if is_pearson else 0
+        label_gap = 46
+        reserved_bottom = int(max_rotated_label_h + label_gap + 16) if is_pearson else 88
+        usable_h = chart_bottom - chart_top - top_label_h - reserved_bottom
+        cell_w = max(30, min(72 if is_pearson else 92, (chart_right - chart_left - label_w) / max(1, len(col_labels))))
+        if is_pearson:
+            cell_h = max(16, min(30, usable_h / max(1, len(row_labels))))
+        else:
+            cell_h = max(34, min(78, usable_h / max(1, len(row_labels))))
+        grid_h = cell_h * max(1, len(row_labels))
+        grid_top = chart_top + top_label_h
+        if not is_pearson and len(row_labels) <= 4:
+            grid_top += max(0, (usable_h - grid_h) / 2)
+        grid_w = cell_w * max(1, len(col_labels))
+        grid_left = chart_left + label_w
+        if not is_pearson and len(col_labels) <= 6:
+            spare_w = chart_right - grid_left - grid_w
+            grid_left += min(180, max(0, spare_w / 2))
+        label_top_y = grid_top + grid_h + label_gap
+        label_bottom_y = min(chart_bottom - 8, label_top_y + max_rotated_label_h)
         for c_index, col in enumerate(col_labels):
-            cx = chart_left + label_w + c_index * cell_w
-            draw.text((cx, chart_top + 18), short_text(col, 13), fill="#333333", font=tiny_font)
+            cx = grid_left + c_index * cell_w
+            if is_pearson:
+                draw_rotated_text((cx + 4, label_bottom_y), short_text(col, 18), tiny_font, "#333333", angle=45)
+            else:
+                draw.text((cx, label_bottom_y - 24), short_text(col, 13), fill="#333333", font=tiny_font)
         for r_index, row_label in enumerate(row_labels):
-            cy = chart_top + top_label_h + r_index * cell_h
+            cy = grid_top + r_index * cell_h
             draw.text((chart_left, cy + 7), short_text(row_label, 28), fill="#333333", font=tiny_font)
             for c_index, col in enumerate(col_labels):
                 value = values.get((row_label, col), 0)
-                cx = chart_left + label_w + c_index * cell_w
-                fill = palette(value, max_value)
+                cx = grid_left + c_index * cell_w
+                fill = pearson_palette(value) if is_pearson else palette(value, max_value)
                 draw.rectangle((cx, cy, cx + cell_w - 3, cy + cell_h - 3), fill=fill, outline="#ffffff")
                 if cell_w >= 38 and cell_h >= 28:
                     draw.text((cx + 6, cy + 6), str(round(value, 1)).rstrip("0").rstrip("."), fill="#111111", font=tiny_font)
         legend_x = chart_right - 180
-        legend_y = chart_bottom - 112
-        for index, colour in enumerate(("#fff7ed", "#fdba74", "#f58220", "#111111")):
+        legend_y = chart_top - 44 if is_pearson else chart_bottom - 112
+        legend_colours = ("#3f6fa9", "#edf1f5", "#b92f24") if is_pearson else ("#fff7ed", "#fdba74", "#f58220", "#111111")
+        for index, colour in enumerate(legend_colours):
             draw.rectangle((legend_x + index * 32, legend_y, legend_x + 30 + index * 32, legend_y + 14), fill=colour)
-        draw.text((legend_x, legend_y + 20), f"0 to {round(max_value, 1)}", fill="#333333", font=tiny_font)
+        legend_text = "-1 to 1 Pearson r" if is_pearson else f"0 to {round(max_value, 1)}"
+        draw.text((legend_x, legend_y + 20), legend_text, fill="#333333", font=tiny_font)
 
     def draw_line():
         if not rows:
@@ -308,14 +399,17 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         series = [number(row[1]) if len(row) > 1 else 0 for row in rows[:16]]
         second = [number(row[2]) if len(row) > 2 else None for row in rows[:16]]
         max_value = max([value for value in series + [v for v in second if v is not None] if value is not None] + [1])
-        axes(max_value=max_value, x_label=headers[0] if headers else "", y_label="Records")
+        rotate_labels = len(labels) > 7 or max((len(label) for label in labels), default=0) > 9
+        bottom_pad = 92 if rotate_labels else 0
+        local_bottom = chart_bottom - bottom_pad
+        axes(bottom=local_bottom, max_value=max_value, x_label=headers[0] if headers else "", y_label="Records")
         def points(values):
             pts = []
             for index, value in enumerate(values):
                 if value is None:
                     continue
                 px = chart_left + 24 + index * ((chart_right - chart_left - 52) / max(1, len(labels) - 1))
-                py = chart_bottom - int((chart_bottom - chart_top - 30) * value / max_value)
+                py = local_bottom - int((local_bottom - chart_top - 30) * value / max_value)
                 pts.append((px, py))
             return pts
         for pts, colour in ((points(series), "#0b0b0b"), (points(second), "#f58220")):
@@ -325,7 +419,10 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
                 draw.ellipse((px - 5, py - 5, px + 5, py + 5), fill=colour)
         for index, label in enumerate(labels):
             px = chart_left + 24 + index * ((chart_right - chart_left - 52) / max(1, len(labels) - 1))
-            draw.text((px - 24, chart_bottom + 10), label, fill="#333333", font=tiny_font)
+            if rotate_labels:
+                draw_rotated_text((px - 4, chart_bottom - 4), short_text(label, 18), tiny_font, "#333333", angle=45)
+            else:
+                draw.text((px - 24, local_bottom + 10), label, fill="#333333", font=tiny_font)
         if second and any(value is not None for value in second):
             legend([
                 ((headers or ["", "Series 1"])[1], "#0b0b0b"),
@@ -420,48 +517,103 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
             draw.text((px + 16, py - 7), label, fill="#333333", font=tiny_font)
         legend([("Course/root", "#111111"), ("Job/skill", "#f58220"), ("Skill/source", "#2f80ed"), ("Relationship", "#d47722")], chart_left, chart_bottom - 92)
 
+    def draw_association_bars():
+        if not rows:
+            draw.text((chart_left, chart_top), "No association data available.", fill="#706960", font=body_font)
+            return
+        pairs = rows[:16]
+        legend_items = [("Higher shared-source count", "#111111"), ("Lower shared-source count", "#fdba74")]
+        top = chart_top + 12
+        left = chart_left + 330
+        right = chart_right - 36
+        bottom = chart_bottom - 112
+        max_value = max([number(row[2] if len(row) > 2 else 0) for row in pairs] + [1])
+        slot = max(22, (bottom - top) / max(1, len(pairs)))
+        bar_h = min(24, slot * .58)
+        draw.line((left, bottom, right, bottom), fill="#706960", width=2)
+        for tick_index in range(5):
+            ratio = tick_index / 4
+            x_pos = left + ratio * (right - left)
+            draw.line((x_pos, bottom, x_pos, bottom + 5), fill="#706960", width=1)
+            draw.text((x_pos - 10, bottom + 10), f"{ratio:.2f}".rstrip("0").rstrip("."), fill="#333333", font=tiny_font)
+        for index, row in enumerate(pairs):
+            left_skill = short_text(row[0], 26)
+            right_skill = short_text(row[1] if len(row) > 1 else "", 26)
+            value = number(row[2] if len(row) > 2 else 0)
+            shared = int(number(row[3] if len(row) > 3 else 0))
+            y_mid = top + slot * index + slot / 2
+            draw.text((chart_left, y_mid - 7), f"{left_skill} <-> {right_skill}", fill="#333333", font=tiny_font)
+            x_end = left + (value / max_value) * (right - left)
+            fill = palette(shared, max([int(number(item[3] if len(item) > 3 else 0)) for item in pairs] + [1]), colours=("#fff7ed", "#fdba74", "#f58220", "#111111"))
+            draw.rectangle((left, y_mid - bar_h / 2, x_end, y_mid + bar_h / 2), fill=fill)
+            draw.text((x_end + 8, y_mid - 7), f"{value:.2f}", fill="#333333", font=tiny_font)
+        label_w = text_width("Association strength", small_font)
+        draw.text((((left + right) - label_w) / 2, bottom + 28), "Association strength", fill="#333333", font=small_font)
+        legend(legend_items, left + 40, bottom + 54)
+
     def draw_process_diagram():
         if not rows:
             draw.text((chart_left, chart_top), "No process data available.", fill="#706960", font=body_font)
             return
         stages = rows[:6]
-        box_w = 185
-        box_h = 94
-        colours = ["#0b0b0b", "#706960", "#f58220", "#2f80ed", "#236b35", "#0b0b0b"]
+        box_w = 210
+        box_h = 104
+        colours = ["#0b0b0b", "#6f685f", "#f58220", "#2f80ed", "#236b35", "#0b0b0b"]
+        horizontal_gap = 110
+        vertical_gap = 126
+        loop_width = (box_w * 3) + (horizontal_gap * 2)
+        start_x = (chart_left + chart_right - loop_width) / 2
+        start_y = chart_top + 36
         positions = [
-            (chart_left + 70, chart_top + 35),
-            (chart_left + 355, chart_top + 35),
-            (chart_left + 640, chart_top + 35),
-            (chart_left + 640, chart_top + 245),
-            (chart_left + 355, chart_top + 245),
-            (chart_left + 70, chart_top + 245),
+            (start_x, start_y),
+            (start_x + box_w + horizontal_gap, start_y),
+            (start_x + (box_w + horizontal_gap) * 2, start_y),
+            (start_x + (box_w + horizontal_gap) * 2, start_y + box_h + vertical_gap),
+            (start_x + box_w + horizontal_gap, start_y + box_h + vertical_gap),
+            (start_x, start_y + box_h + vertical_gap),
         ]
         centers = [(x + box_w / 2, y + box_h / 2) for x, y in positions[:len(stages)]]
-        for index, (cx, cy) in enumerate(centers):
-            nx, ny = centers[(index + 1) % len(centers)]
-            draw.line((cx, cy, nx, ny), fill="#d47722", width=4)
-            dx = nx - cx
-            dy = ny - cy
+
+        def arrow_line(start, end, start_offset=0, end_offset=0):
+            sx, sy = start
+            ex, ey = end
+            dx = ex - sx
+            dy = ey - sy
             length = max(1, (dx * dx + dy * dy) ** .5)
             ux = dx / length
             uy = dy / length
-            ax = nx - ux * (box_w / 2 + 12)
-            ay = ny - uy * (box_h / 2 + 12)
-            draw.polygon([(ax, ay), (ax - ux * 14 - uy * 7, ay - uy * 14 + ux * 7), (ax - ux * 14 + uy * 7, ay - uy * 14 - ux * 7)], fill="#d47722")
+            sx = sx + ux * start_offset
+            sy = sy + uy * start_offset
+            ex = ex - ux * end_offset
+            ey = ey - uy * end_offset
+            draw.line((sx, sy, ex, ey), fill="#d47722", width=4)
+            draw.polygon(
+                [
+                    (ex, ey),
+                    (ex - ux * 15 - uy * 7, ey - uy * 15 + ux * 7),
+                    (ex - ux * 15 + uy * 7, ey - uy * 15 - ux * 7),
+                ],
+                fill="#d47722",
+            )
+
+        for index, (cx, cy) in enumerate(centers):
+            nx, ny = centers[(index + 1) % len(centers)]
+            if index in (0, 1):
+                arrow_line((cx + box_w / 2, cy), (nx - box_w / 2, ny))
+            elif index == 2:
+                arrow_line((cx, cy + box_h / 2), (nx, ny - box_h / 2))
+            elif index in (3, 4):
+                arrow_line((cx - box_w / 2, cy), (nx + box_w / 2, ny))
+            else:
+                arrow_line((cx, cy - box_h / 2), (nx, ny + box_h / 2))
         for index, row in enumerate(stages):
             x0, y0 = positions[index]
             fill = colours[index % len(colours)]
             draw.rounded_rectangle((x0, y0, x0 + box_w, y0 + box_h), radius=12, fill=fill, outline="#ffffff", width=2)
-            draw.text((x0 + 12, y0 + 10), str(row[0])[:22], fill="#ffffff", font=small_font)
-            for line_index, line in enumerate(wrap_text(row[1] if len(row) > 1 else "", 20)[:3]):
-                draw.text((x0 + 12, y0 + 38 + line_index * 15), line, fill="#ffffff", font=tiny_font)
-        center_x = (chart_left + chart_right) / 2
-        center_y = chart_top + 210
-        draw.rounded_rectangle((center_x - 190, center_y - 42, center_x + 190, center_y + 42), radius=12, fill="#fbfaf6", outline="#e6ded3", width=2)
-        draw.text((center_x - 154, center_y - 24), "Circular methodology loop", fill="#111111", font=small_font)
-        draw.text((center_x - 166, center_y - 2), "reviewed skills and aliases feed", fill="#333333", font=tiny_font)
-        draw.text((center_x - 152, center_y + 16), "the next analysis refresh", fill="#333333", font=tiny_font)
-        draw.text((chart_left, chart_bottom - 28), "The runtime executes in sequence, but the methodology is iterative: review and deployment feed the next run.", fill="#333333", font=small_font)
+            draw.text((x0 + 14, y0 + 11), str(row[0])[:24], fill="#ffffff", font=small_font)
+            for line_index, line in enumerate(wrap_text(row[1] if len(row) > 1 else "", 23)[:4]):
+                draw.text((x0 + 14, y0 + 40 + line_index * 15), line, fill="#ffffff", font=tiny_font)
+        draw.text((chart_left, chart_bottom - 22), "The runtime is sequential, but the methodology is iterative: reviewed evidence improves the next run.", fill="#333333", font=small_font)
 
     def draw_funnel_diagram():
         if not rows:
@@ -680,6 +832,8 @@ def fallback_png(title, caption, fallback_headers=None, fallback_rows=None, widt
         draw_event_sequence()
     elif "divergence" in title_lower:
         draw_diverging_bars()
+    elif "semantic association" in title_lower or "association strength" in title_lower:
+        draw_association_bars()
     elif "network" in title_lower or "cluster" in title_lower or "linked to type" in title_lower:
         draw_network()
     elif "heatmap" in title_lower or "cross-tab" in title_lower or "density" in title_lower:
@@ -737,6 +891,12 @@ def figure_reference_text(title, fallback_headers=None, fallback_rows=None):
         return (
             f"Reference to {title}: the x-axis shows {headers[1] if len(headers) > 1 else 'matched evidence'} and the y-axis shows {headers[2] if len(headers) > 2 else 'missing evidence'}. "
             f"The highest missing-evidence point is {label(highest_missing[0])}, with x={highest_missing[1] if len(highest_missing) > 1 else 0} and y={highest_missing[2] if len(highest_missing) > 2 else 0}."
+        )
+    if "semantic association" in title_lower or "association strength" in title_lower:
+        strongest = max(rows, key=lambda row: number(row[2] if len(row) > 2 else 0))
+        return (
+            f"Reference to {title}: each row shows a skill pair, with x-axis position giving association strength and color indicating shared-source count. "
+            f"The strongest exported pair is {label(strongest[0])} with {label(strongest[1] if len(strongest) > 1 else '')} at {strongest[2] if len(strongest) > 2 else 0}."
         )
     if "network" in title_lower or "cluster" in title_lower or "linked to type" in title_lower:
         return (
@@ -869,6 +1029,25 @@ def create_horizontal_bar_figure(title, rows, x_title="Records", color="#f58220"
         showlegend=False,
     )
     return fig
+
+
+def top_similarity_rows(results, limit=20):
+    rows = []
+    for result in sorted(results, key=lambda item: item.similarity_score, reverse=True)[:limit]:
+        course_label = result.course.code or result.course.name[:32]
+        job_label = result.job.title[:56]
+        rows.append((f"{course_label} -> {job_label}", result.similarity_percent))
+    return rows
+
+
+def top_similarity_figure(results, limit=20):
+    return create_horizontal_bar_figure(
+        "Top Course-to-Job Similarities",
+        top_similarity_rows(results, limit=limit),
+        x_title="Similarity score (%)",
+        color="#111111",
+        limit=limit,
+    )
 
 
 def dashboard_skill_line_rows(run=None):
@@ -1366,6 +1545,56 @@ def report_skill_entity_rows(run=None):
     return rows
 
 
+def cluster_association_rows(rows, limit=18):
+    grouped = {}
+    sector_map = {}
+    source_type_map = {}
+    for row in rows:
+        source = row.get("source_label") or "unknown"
+        grouped.setdefault(source, set()).add(row["skill"])
+        sector_map.setdefault(row["skill"], set()).add(row.get("sector") or "Unclassified")
+        source_type_map.setdefault(row["skill"], set()).add(row.get("source_type") or "unknown")
+    if not grouped:
+        return []
+
+    skill_doc_counts = Counter()
+    pair_doc_counts = Counter()
+    for skills in grouped.values():
+        ordered = sorted(skills)
+        for skill in ordered:
+            skill_doc_counts[skill] += 1
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1:]:
+                pair_doc_counts[(left, right)] += 1
+
+    rows_out = []
+    for (left, right), pair_count in pair_doc_counts.items():
+        left_count = skill_doc_counts[left]
+        right_count = skill_doc_counts[right]
+        if not left_count or not right_count:
+            continue
+        left_tokens = set(left.split())
+        right_tokens = set(right.split())
+        token_overlap = len(left_tokens & right_tokens) / max(1, len(left_tokens | right_tokens))
+        left_sectors = sector_map.get(left, set())
+        right_sectors = sector_map.get(right, set())
+        sector_overlap = len(left_sectors & right_sectors) / max(1, len(left_sectors | right_sectors))
+        left_sources = source_type_map.get(left, set())
+        right_sources = source_type_map.get(right, set())
+        source_overlap = len(left_sources & right_sources) / max(1, len(left_sources | right_sources))
+        cooccurrence_strength = pair_count / max(1, max(left_count, right_count))
+        strength = (
+            (0.45 * cooccurrence_strength)
+            + (0.25 * token_overlap)
+            + (0.20 * sector_overlap)
+            + (0.10 * source_overlap)
+        )
+        rows_out.append((left, right, round(strength, 3), pair_count))
+
+    rows_out.sort(key=lambda row: (row[2], row[3], row[0], row[1]), reverse=True)
+    return rows_out[:limit]
+
+
 def data_export_top_skills_figure(rows):
     return create_horizontal_bar_figure(
         "Top Skill Evidence",
@@ -1560,60 +1789,36 @@ def data_export_cluster_figure(rows):
     go = plotly_go()
     if go is None:
         return None
-    pairs = Counter(row["skill"] for row in rows).most_common(36)
-    if not pairs:
+    associations = cluster_association_rows(rows, limit=18)
+    if not associations:
         return None
-    skills = [skill for skill, _count in pairs]
-    nodes = []
-    for index, (skill, count) in enumerate(pairs):
-        angle = index * 0.72
-        radius = 1 + (index % 6) * .18
-        skill_rows = [row for row in rows if row["skill"] == skill]
-        skill_type = Counter(row["skill_type"] for row in skill_rows).most_common(1)[0][0]
-        nodes.append({
-            "skill": skill,
-            "count": count,
-            "skill_type": skill_type,
-            "tokens": set(skill.split()),
-            "x": radius * __import__("math").cos(angle),
-            "y": radius * __import__("math").sin(angle),
-        })
-    edge_x = []
-    edge_y = []
-    for left_index, left in enumerate(nodes):
-        for right_index in range(left_index + 1, len(nodes)):
-            right = nodes[right_index]
-            token_score = len(left["tokens"] & right["tokens"]) / max(1, len(left["tokens"] | right["tokens"]))
-            type_score = .18 if left["skill_type"] == right["skill_type"] else 0
-            if token_score + type_score < .28:
-                continue
-            edge_x.extend([left["x"], right["x"], None])
-            edge_y.extend([left["y"], right["y"], None])
-    color_by_type = {"technical": "#2f80ed", "business": "#f58220", "soft": "#236b35", "course": "#236b35", "job": "#f58220"}
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=edge_x, y=edge_y, mode="lines", line={"color": "rgba(112,105,96,.24)", "width": 1.2}, hoverinfo="skip", showlegend=False))
-    fig.add_trace(go.Scatter(
-        x=[node["x"] for node in nodes],
-        y=[node["y"] for node in nodes],
-        text=[node["skill"] for node in nodes],
-        mode="markers+text",
-        textposition="top center",
+    labels = [f"{left} <-> {right}" for left, right, _strength, _count in associations]
+    strengths = [strength for _left, _right, strength, _count in associations]
+    pair_counts = [count for _left, _right, _strength, count in associations]
+    fig.add_trace(go.Bar(
+        x=strengths,
+        y=labels,
+        orientation="h",
         marker={
-            "size": [min(34, 10 + node["count"] * 2) for node in nodes],
-            "color": [color_by_type.get(node["skill_type"], "#706960") for node in nodes],
-            "opacity": .92,
+            "color": pair_counts,
+            "colorscale": [[0, "#fff7ed"], [.5, "#f58220"], [1, "#111111"]],
             "line": {"color": "#ffffff", "width": 1},
+            "colorbar": {"title": "Co-occurrence"},
         },
-        hovertemplate="%{text}<extra></extra>",
+        text=[f"{strength:.2f}" for strength in strengths],
+        textposition="outside",
+        customdata=pair_counts,
+        hovertemplate="Pair: %{y}<br>Association strength: %{x:.2f}<br>Shared sources: %{customdata}<extra></extra>",
         showlegend=False,
     ))
     fig.update_layout(
         title={"text": "Semantic Association Clusters", "x": 0.02, "xanchor": "left"},
-        margin={"l": 30, "r": 30, "t": 70, "b": 30},
+        margin={"l": 260, "r": 60, "t": 70, "b": 50},
         paper_bgcolor="white",
         plot_bgcolor="white",
-        xaxis={"visible": False},
-        yaxis={"visible": False, "scaleanchor": "x", "scaleratio": 1},
+        xaxis={"title": "Ochiai association strength", "range": [0, max(1, max(strengths, default=0) * 1.12)], "gridcolor": "#f2eee8"},
+        yaxis={"autorange": "reversed", "automargin": True},
         height=620,
     )
     return fig
@@ -1623,7 +1828,6 @@ def methodology_pipeline_figure():
     go = plotly_go()
     if go is None:
         return None
-    import math
 
     labels = ["Ingest", "Clean", "Extract", "Compare", "Validate", "Export"]
     details = [
@@ -1634,51 +1838,50 @@ def methodology_pipeline_figure():
         "scores, cells, equations",
         "DOCX, CSV, PNG assets",
     ]
-    angles = [(-math.pi / 2) + index * (math.pi * 2 / len(labels)) for index in range(len(labels))]
-    x_values = [math.cos(angle) for angle in angles]
-    y_values = [math.sin(angle) for angle in angles]
+    x_values = [0, 1.55, 3.1, 3.1, 1.55, 0]
+    y_values = [1, 1, 1, 0, 0, 0]
+    colours = ["#0b0b0b", "#6f685f", "#f58220", "#2f80ed", "#236b35", "#0b0b0b"]
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=x_values + [x_values[0]],
-        y=y_values + [y_values[0]],
-        mode="lines",
-        line={"color": "#f58220", "width": 5},
-        hoverinfo="skip",
-        showlegend=False,
-    ))
-    fig.add_trace(go.Scatter(
-        x=x_values,
-        y=y_values,
-        mode="markers+text",
-        marker={"size": 34, "color": ["#0b0b0b", "#706960", "#f58220", "#2f80ed", "#236b35", "#0b0b0b"]},
-        text=[str(index + 1) for index in range(len(labels))],
-        textfont={"color": "white", "size": 13},
-        textposition="middle center",
-        hoverinfo="skip",
-        showlegend=False,
-    ))
+    for index in range(len(labels)):
+        next_index = (index + 1) % len(labels)
+        fig.add_annotation(
+            x=x_values[next_index],
+            y=y_values[next_index],
+            ax=x_values[index],
+            ay=y_values[index],
+            xref="x",
+            yref="y",
+            axref="x",
+            ayref="y",
+            showarrow=True,
+            arrowhead=3,
+            arrowsize=1.4,
+            arrowwidth=3,
+            arrowcolor="#d47722",
+            standoff=42,
+            startstandoff=42,
+        )
     for index, (label, detail) in enumerate(zip(labels, details)):
-        fig.add_annotation(x=x_values[index] * 1.28, y=y_values[index] * 1.18, text=f"<b>{label}</b><br>{detail}", showarrow=False, align="center", font={"size": 13})
-    fig.add_annotation(
-        x=0,
-        y=0,
-        text="<b>Circular methodology loop</b><br>reviewed skills and aliases<br>feed the next refresh",
-        showarrow=False,
-        align="center",
-        font={"size": 13},
-        bgcolor="#fbfaf6",
-        bordercolor="#e6ded3",
-        borderpad=10,
-    )
+        fig.add_annotation(
+            x=x_values[index],
+            y=y_values[index],
+            text=f"<b>{index + 1}. {label}</b><br>{detail}",
+            showarrow=False,
+            align="center",
+            font={"size": 13, "color": "white"},
+            bgcolor=colours[index],
+            bordercolor="#ffffff",
+            borderpad=12,
+        )
     fig.update_layout(
         title={"text": "Iterative Methodology Pipeline", "x": .02, "xanchor": "left"},
         width=1050,
-        height=520,
+        height=460,
         margin={"l": 20, "r": 20, "t": 60, "b": 30},
         plot_bgcolor="white",
         paper_bgcolor="white",
-        xaxis={"visible": False, "range": [-1.7, 1.7]},
-        yaxis={"visible": False, "range": [-1.4, 1.4], "scaleanchor": "x", "scaleratio": 1},
+        xaxis={"visible": False, "range": [-.45, 3.55]},
+        yaxis={"visible": False, "range": [-.25, 1.25]},
     )
     return fig
 
@@ -2161,34 +2364,6 @@ def build_research_paper_docx(run, visual_data):
     if results:
         add_figure(
             document,
-            "Dashboard Chart. Cosine Similarity Network",
-            "This is the paper export version of the dashboard course-job similarity network.",
-            similarity_network_figure(results),
-            ["Course", "Job advert", "Score"],
-            [
-                (result.course.code or result.course.name, result.job.title, f"{result.similarity_percent}%")
-                for result in sorted(results, key=lambda item: item.similarity_score, reverse=True)[:20]
-            ],
-            asset_dir=asset_dir,
-            image_name="dashboard-cosine-similarity-network",
-            manifest_rows=manifest_rows,
-        )
-        add_figure(
-            document,
-            "Dashboard Plotly Chart. Course-to-Job Similarity Cross-tab",
-            "This is the paper export version of the dashboard Plotly cross-tab heatmap.",
-            course_job_crosstab_figure(results),
-            ["Course", "Job advert", "Score"],
-            [
-                (result.course.code or result.course.name, result.job.title, f"{result.similarity_percent}%")
-                for result in sorted(results, key=lambda item: item.similarity_score, reverse=True)[:20]
-            ],
-            asset_dir=asset_dir,
-            image_name="dashboard-course-job-crosstab",
-            manifest_rows=manifest_rows,
-        )
-        add_figure(
-            document,
             "Results Chart. Course Alignment Score-Band Heatmap",
             "This is the paper export version of the score-band heatmap shown on the analysis results page.",
             score_band_heatmap_figure(visual_data),
@@ -2219,7 +2394,7 @@ def build_research_paper_docx(run, visual_data):
             "This heatmap shows Pearson correlation coefficients between skill presence vectors across role requirement profiles.",
             heatmap_figure(visual_data),
             ["Row skill", "Column skill", "Pearson r"],
-            correlation_rows(visual_data),
+            correlation_rows(visual_data, limit=260),
             asset_dir=asset_dir,
             image_name="figure-02-skill-correlation-heatmap",
             manifest_rows=manifest_rows,
@@ -2233,17 +2408,6 @@ def build_research_paper_docx(run, visual_data):
             [(point["label"], point["x"], point["y"], point["score"]) for point in visual_data.get("scatter_points", [])],
             asset_dir=asset_dir,
             image_name="figure-03-matched-vs-missing",
-            manifest_rows=manifest_rows,
-        )
-        add_figure(
-            document,
-            "Figure 4. School Summary",
-            "This chart compares school-level average alignment with missing-skill evidence.",
-            school_summary_figure(visual_data),
-            ["School", "Average score", "Missing evidence"],
-            [(row["school"], row["avg_score"], row["missing_total"]) for row in visual_data.get("school_summaries", [])],
-            asset_dir=asset_dir,
-            image_name="figure-04-school-summary",
             manifest_rows=manifest_rows,
         )
         add_figure(
@@ -2266,6 +2430,17 @@ def build_research_paper_docx(run, visual_data):
             role_divergence_rows(visual_data),
             asset_dir=asset_dir,
             image_name="figure-06-role-skill-divergence",
+            manifest_rows=manifest_rows,
+        )
+        add_figure(
+            document,
+            "Results Plotly Chart. Skill Correlation Heatmap",
+            "This is the Pearson correlation matrix from the Analysis Results page, exported as a cached PNG alongside the role divergence charts.",
+            heatmap_figure(visual_data),
+            ["Row skill", "Column skill", "Pearson r"],
+            correlation_rows(visual_data, limit=260),
+            asset_dir=asset_dir,
+            image_name="results-skill-correlation-heatmap",
             manifest_rows=manifest_rows,
         )
         for index, role in enumerate((visual_data.get("role_skill_divergence", {}).get("roles") or [])[:25], start=1):
@@ -2352,17 +2527,6 @@ def build_research_paper_docx(run, visual_data):
         )
         add_figure(
             document,
-            "Data Export Plotly Chart. Skills Linked to Type and Source",
-            "This is the paper export version of the skill evidence network on the Data Export page.",
-            data_export_skill_network_figure(data_export_rows),
-            ["Skill", "Type", "Source"],
-            [(row["skill"], row["skill_type"], row["source_type"]) for row in data_export_rows[:30]],
-            asset_dir=asset_dir,
-            image_name="data-export-skill-network",
-            manifest_rows=manifest_rows,
-        )
-        add_figure(
-            document,
             "Data Export Plotly Chart. Skill Evidence Trend and One-Year Forecast",
             "This is the paper export version of the skill demand forecast chart. When no dated evidence exists, the source rows are shown instead.",
             data_export_forecast_figure(data_export_rows),
@@ -2375,10 +2539,10 @@ def build_research_paper_docx(run, visual_data):
         add_figure(
             document,
             "Data Export Plotly Chart. Semantic Association Clusters",
-            "This is the paper export version of the semantic skill cluster chart.",
+            "This export ranks the strongest skill-to-skill associations based on repeated co-occurrence inside the same source records.",
             data_export_cluster_figure(data_export_rows),
-            ["Skill", "Records"],
-            Counter(row["skill"] for row in data_export_rows).most_common(30),
+            ["Left skill", "Right skill", "Association strength", "Shared sources"],
+            cluster_association_rows(data_export_rows, limit=24),
             asset_dir=asset_dir,
             image_name="data-export-semantic-association-clusters",
             manifest_rows=manifest_rows,
