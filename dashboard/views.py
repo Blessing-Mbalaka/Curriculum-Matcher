@@ -536,22 +536,22 @@ def filtered_skill_entity_rows(request):
         row for row in iter_skill_entity_rows()
         if row.get("skill_type") != "exclude" and row.get("label") != "exclude"
     ]
-    source = request.GET.get("source", "").strip()
-    skill_type = request.GET.get("skill_type", "").strip()
-    sector = request.GET.get("sector", "").strip()
-    job_title = request.GET.get("job_title", "").strip()
-    label_status = request.GET.get("label_status", "").strip()
+    source_values = request_multi_values(request, "source")
+    skill_type_values = request_multi_values(request, "skill_type")
+    sector_values = request_multi_values(request, "sector")
+    job_title_values = request_multi_values(request, "job_title")
+    label_status_values = request_multi_values(request, "label_status")
     q = request.GET.get("q", "").strip().lower()
-    if source:
-        rows = [row for row in rows if row["source_type"] == source]
-    if skill_type:
-        rows = [row for row in rows if row["skill_type"] == skill_type]
-    if sector:
-        rows = [row for row in rows if row["sector"] == sector]
-    if job_title:
-        rows = [row for row in rows if row["job_title"] == job_title]
-    if label_status:
-        rows = [row for row in rows if row["label_status"] == label_status]
+    if source_values:
+        rows = [row for row in rows if row["source_type"] in source_values]
+    if skill_type_values:
+        rows = [row for row in rows if row["skill_type"] in skill_type_values]
+    if sector_values:
+        rows = [row for row in rows if row["sector"] in sector_values]
+    if job_title_values:
+        rows = [row for row in rows if row["job_title"] in job_title_values]
+    if label_status_values:
+        rows = [row for row in rows if row["label_status"] in label_status_values]
     if q:
         rows = [
             row for row in rows
@@ -563,6 +563,16 @@ def filtered_skill_entity_rows(request):
             or q in row["id"].lower()
         ]
     return rows
+
+
+def request_multi_values(request, key):
+    values = []
+    for raw in request.GET.getlist(key):
+        for value in str(raw or "").split(","):
+            normalized = value.strip()
+            if normalized and normalized not in values:
+                values.append(normalized)
+    return values
 
 
 def active_entity_skill_names(entities):
@@ -1341,6 +1351,59 @@ class SkillVectorSpaceView(TemplateView):
         return ctx
 
 
+class SummaryView(TemplateView):
+    template_name = "dashboard/summary.html"
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+
+        unique_course_codes = Course.objects.exclude(code="").values_list("code", flat=True).distinct()
+        unique_module_names = Module.objects.exclude(name="").values_list("name", flat=True).distinct()
+        unique_job_titles = JobAdvert.objects.exclude(title="").values_list("title", flat=True).distinct()
+        unique_companies = JobAdvert.objects.exclude(company="").values_list("company", flat=True).distinct()
+        unique_categories = JobAdvert.objects.exclude(category="").values_list("category", flat=True).distinct()
+
+        top_job_titles = list(
+            JobAdvert.objects.exclude(title="")
+            .values_list("title", flat=True)
+        )
+        top_companies = list(
+            JobAdvert.objects.exclude(company="")
+            .values_list("company", flat=True)
+        )
+        top_categories = list(
+            JobAdvert.objects.exclude(category="")
+            .values_list("category", flat=True)
+        )
+        top_course_names = list(
+            Course.objects.exclude(name="")
+            .values_list("name", flat=True)
+        )
+
+        ctx.update({
+            "summary_counts": {
+                "courses_total": Course.objects.count(),
+                "courses_unique_names": len(set(top_course_names)),
+                "courses_unique_codes": unique_course_codes.count(),
+                "modules_total": Module.objects.count(),
+                "modules_unique_names": unique_module_names.count(),
+                "jobs_total": JobAdvert.objects.count(),
+                "jobs_unique_titles": unique_job_titles.count(),
+                "jobs_unique_companies": unique_companies.count(),
+                "jobs_unique_categories": unique_categories.count(),
+            },
+            "top_course_names": Counter(top_course_names).most_common(8),
+            "top_job_titles": Counter(top_job_titles).most_common(8),
+            "top_companies": Counter(top_companies).most_common(8),
+            "top_categories": Counter(top_categories).most_common(8),
+            "top_universities": Counter(
+                Course.objects.exclude(university_name="")
+                .values_list("university_name", flat=True)
+            ).most_common(8),
+        })
+        return ctx
+
+
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class RagChatbotView(TemplateView):
     template_name = "dashboard/rag_chatbot.html"
@@ -2046,6 +2109,7 @@ def build_results_visual_data(results, threshold):
         "plotly_heatmap_rows": plotly_heatmap_rows[:500],
         "skill_correlation_matrix": build_skill_correlation_matrix(results),
         "role_skill_divergence": build_role_skill_divergence(results),
+        "comparison_data": build_gap_analysis_comparison_data(results),
         "scatter_points": scatter_points,
         "school_summaries": school_summaries,
         "school_recommendations": school_recommendations,
@@ -2142,7 +2206,7 @@ def build_model_validation_notebook(results, visual_data, sample_limit=20):
     }
 
 
-def build_skill_correlation_matrix(results, limit=16):
+def build_role_skill_profiles(results):
     profiles = {}
     for result in results:
         skills = object_skill_names(
@@ -2156,10 +2220,42 @@ def build_skill_correlation_matrix(results, limit=16):
                 for skill in (result.matched_skills or []) + (result.missing_skills or [])
                 if skill
             ]
-        profile = profiles.setdefault(result.job_id, set())
-        profile.update(skill for skill in skills if skill)
+        role = " ".join(str(result.job.title or "Untitled role").split())
+        course_label = (result.course.code or result.course.name or "").strip()
+        school = (result.course.university_name or "Unassigned school").strip()
+        profile = profiles.setdefault(result.job_id, {
+            "job_id": result.job_id,
+            "role": role,
+            "company": " ".join(str(result.job.company or "").split()),
+            "sector": " ".join(str(result.job.category or "").split()),
+            "skills": set(),
+            "courses": set(),
+            "schools": set(),
+        })
+        profile["skills"].update(skill for skill in skills if skill)
+        if course_label:
+            profile["courses"].add(course_label)
+        if school:
+            profile["schools"].add(school)
 
-    profile_skills = [skills for skills in profiles.values() if skills]
+    rows = []
+    for profile in profiles.values():
+        if not profile["skills"]:
+            continue
+        rows.append({
+            "job_id": profile["job_id"],
+            "role": profile["role"],
+            "company": profile["company"],
+            "sector": profile["sector"],
+            "skills": sorted(profile["skills"]),
+            "courses": sorted(profile["courses"]),
+            "schools": sorted(profile["schools"]),
+        })
+    return rows
+
+
+def build_skill_correlation_matrix_from_profiles(profile_rows, limit=16):
+    profile_skills = [set(profile.get("skills") or []) for profile in profile_rows if profile.get("skills")]
     frequency = Counter(skill for skills in profile_skills for skill in skills)
     selected_skills = [
         skill
@@ -2204,27 +2300,16 @@ def build_skill_correlation_matrix(results, limit=16):
     }
 
 
-def build_role_skill_divergence(results, role_limit=120, skill_limit=9):
-    job_profiles = {}
-    for result in results:
-        skills = object_skill_names(
-            result.job,
-            fallback_skills=(result.matched_skills or []) + (result.missing_skills or []),
-            limit=80,
-        )
-        if not skills:
-            skills = [
-                " ".join(str(skill or "").lower().replace("-", " ").split())
-                for skill in (result.matched_skills or []) + (result.missing_skills or [])
-                if skill
-            ]
-        profile = job_profiles.setdefault(result.job_id, {
-            "role": " ".join(str(result.job.title or "Untitled role").split()),
-            "skills": set(),
-        })
-        profile["skills"].update(skill for skill in skills if skill)
+def build_skill_correlation_matrix(results, limit=16):
+    return build_skill_correlation_matrix_from_profiles(build_role_skill_profiles(results), limit=limit)
 
-    profiles = [profile for profile in job_profiles.values() if profile["skills"]]
+
+def build_role_skill_divergence_from_profiles(profile_rows, role_limit=120, skill_limit=9):
+    profiles = [
+        {"role": profile.get("role") or "Untitled role", "skills": set(profile.get("skills") or [])}
+        for profile in profile_rows
+        if profile.get("skills")
+    ]
     global_counts = Counter(skill for profile in profiles for skill in profile["skills"])
     global_total = sum(global_counts.values())
     if not profiles or not global_total:
@@ -2269,6 +2354,38 @@ def build_role_skill_divergence(results, role_limit=120, skill_limit=9):
     return {
         "roles": sorted(rows, key=lambda row: (-row["profile_count"], row["role"]))[:role_limit],
         "profile_count": len(profiles),
+    }
+
+
+def build_role_skill_divergence(results, role_limit=120, skill_limit=9):
+    return build_role_skill_divergence_from_profiles(
+        build_role_skill_profiles(results),
+        role_limit=role_limit,
+        skill_limit=skill_limit,
+    )
+
+
+def build_gap_analysis_comparison_data(results):
+    profiles = build_role_skill_profiles(results)
+
+    def unique_sorted(values):
+        return sorted({value for value in values if value}, key=lambda value: value.lower())
+
+    return {
+        "profiles": profiles,
+        "catalog": {
+            "role": unique_sorted(profile["role"] for profile in profiles),
+            "skill": unique_sorted(skill for profile in profiles for skill in profile["skills"]),
+            "sector": unique_sorted(profile["sector"] for profile in profiles),
+            "company": unique_sorted(profile["company"] for profile in profiles),
+            "course": unique_sorted(course for profile in profiles for course in profile["courses"]),
+            "school": unique_sorted(school for profile in profiles for school in profile["schools"]),
+        },
+        "counts": {
+            "profiles": len(profiles),
+            "roles": len({profile["role"] for profile in profiles if profile["role"]}),
+            "skills": len({skill for profile in profiles for skill in profile["skills"]}),
+        },
     }
 
 
@@ -3146,7 +3263,7 @@ def balanced_skill_vector_rows(rows, request, limit=900):
     if len(rows) <= limit:
         return rows
 
-    source_filter = request.GET.get("source", "")
+    source_filter = request_multi_values(request, "source")
     if source_filter:
         return rows[:limit]
 

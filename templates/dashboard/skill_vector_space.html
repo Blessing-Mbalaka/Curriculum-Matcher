@@ -9,10 +9,10 @@
 {% block extra_css %}
 <style>
 .content { max-width:none; padding:0; }
-.vector-shell { height:calc(100vh - 57px); display:grid; grid-template-rows:auto 1fr; background:#070707; color:#fff; }
+.vector-shell { height:calc(100vh - 57px); display:grid; grid-template-rows:auto auto 1fr; background:#070707; color:#fff; }
 .vector-toolbar {
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:14px;
   padding:12px 16px;
@@ -21,8 +21,9 @@
 }
 .vector-title { font-weight:800; font-size:14px; }
 .vector-sub { color:rgba(255,255,255,.58); font-size:12px; margin-top:2px; }
-.vector-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.vector-search, .vector-filter {
+.vector-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:flex-end; }
+.vector-basic-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.vector-search, .vector-filter, .vector-advanced-search {
   width:min(280px, 36vw);
   min-width:180px;
   height:34px;
@@ -34,7 +35,12 @@
   outline:none;
 }
 .vector-filter { width:150px; min-width:132px; }
-.vector-search:focus, .vector-filter:focus { border-color:var(--uj-orange); box-shadow:0 0 0 3px rgba(245,130,32,.16); }
+.vector-search:focus,
+.vector-filter:focus,
+.vector-advanced-search:focus {
+  border-color:var(--uj-orange);
+  box-shadow:0 0 0 3px rgba(245,130,32,.16);
+}
 .vector-filter option { color:#111; background:#fff; }
 .vector-stage { position:relative; min-height:0; overflow:hidden; }
 .vector-stage::before {
@@ -62,6 +68,7 @@
 .vector-stat { border:1px solid rgba(255,255,255,.18); border-radius:999px; padding:4px 10px; color:rgba(255,255,255,.72); font-size:11px; }
 .btn-on-dark { background:rgba(255,255,255,.08); color:#fff; border:1px solid rgba(255,255,255,.2); }
 .btn-on-dark:hover { border-color:var(--uj-orange); }
+.btn-on-dark.active { background:var(--uj-orange); color:#111; border-color:var(--uj-orange); }
 .vector-panel {
   position:absolute;
   left:16px;
@@ -90,23 +97,9 @@
   padding:12px;
   backdrop-filter:blur(10px);
 }
-.vector-legend-title {
-  color:#fff;
-  font-weight:800;
-  font-size:13px;
-  margin-bottom:8px;
-}
-.vector-legend-grid {
-  display:grid;
-  grid-template-columns:1fr;
-  gap:7px;
-}
-.vector-legend-item {
-  display:flex;
-  align-items:center;
-  gap:8px;
-  font-size:12px;
-}
+.vector-legend-title { color:#fff; font-weight:800; font-size:13px; margin-bottom:8px; }
+.vector-legend-grid { display:grid; grid-template-columns:1fr; gap:7px; }
+.vector-legend-item { display:flex; align-items:center; gap:8px; font-size:12px; }
 .vector-legend-swatch {
   width:12px;
   height:12px;
@@ -120,10 +113,138 @@
   border-radius:999px;
   flex:0 0 auto;
 }
+.vector-advanced {
+  display:none;
+  border-bottom:1px solid rgba(245,130,32,.22);
+  background:rgba(10,10,10,.96);
+  padding:14px 16px 16px;
+  gap:14px;
+}
+.vector-advanced.active { display:grid; }
+.vector-advanced-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.vector-advanced-copy {
+  color:rgba(255,255,255,.72);
+  font-size:12px;
+  max-width:780px;
+}
+.vector-advanced-summary {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  min-height:34px;
+}
+.vector-advanced-cta {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+.vector-advanced-note {
+  color:rgba(255,255,255,.58);
+  font-size:11px;
+}
+.vector-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  background:rgba(245,130,32,.16);
+  border:1px solid rgba(245,130,32,.36);
+  color:#fff;
+  font-size:11px;
+}
+.vector-advanced-grid {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:12px;
+}
+.vector-advanced-group {
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:10px;
+  background:rgba(255,255,255,.04);
+  padding:12px;
+  min-height:0;
+}
+.vector-advanced-group-head {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+.vector-advanced-group-title {
+  font-weight:800;
+  font-size:12px;
+  color:#fff;
+}
+.vector-advanced-count {
+  color:rgba(255,255,255,.58);
+  font-size:11px;
+}
+.vector-advanced-tools {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-bottom:10px;
+}
+.vector-advanced-search { width:100%; min-width:0; }
+.vector-advanced-actions {
+  display:flex;
+  align-items:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.vector-advanced-link {
+  border:0;
+  background:none;
+  color:var(--uj-orange);
+  cursor:pointer;
+  font-size:11px;
+  padding:0;
+}
+.vector-advanced-list {
+  max-height:180px;
+  overflow:auto;
+  display:grid;
+  gap:6px;
+  padding-right:2px;
+}
+.vector-advanced-option {
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  padding:7px 8px;
+  border-radius:8px;
+  background:rgba(255,255,255,.03);
+}
+.vector-advanced-option input { margin-top:2px; }
+.vector-advanced-option span {
+  color:rgba(255,255,255,.82);
+  font-size:12px;
+  line-height:1.35;
+  word-break:break-word;
+}
+.vector-advanced-empty {
+  color:rgba(255,255,255,.46);
+  font-size:12px;
+  padding:4px 0;
+}
+.vector-hidden { display:none !important; }
+@media (max-width:1100px) {
+  .vector-advanced-grid { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width:760px) {
-  .vector-shell { height:calc(100vh - 49px); }
+  .vector-shell { height:calc(100vh - 49px); grid-template-rows:auto auto 1fr; }
   .vector-toolbar { align-items:flex-start; flex-direction:column; }
-  .vector-actions { width:100%; }
+  .vector-actions, .vector-basic-filters { width:100%; }
   .vector-search, .vector-filter { width:100%; }
   .vector-panel,
   .vector-legend {
@@ -134,6 +255,9 @@
     width:auto;
     margin:12px;
   }
+  .vector-advanced-head { flex-direction:column; }
+  .vector-advanced-cta { justify-content:flex-start; }
+  .vector-advanced-grid { grid-template-columns:1fr; }
 }
 </style>
 {% endblock %}
@@ -153,30 +277,33 @@
           <span class="graph-insight-body">Root job and course nodes connect to extracted skills. Orange strands show skill-to-skill semantic similarity, and evidence strands show where each skill was found.</span>
         </span>
       </span>
-      <select class="vector-filter" id="vectorSourceFilter" aria-label="Source">
-        <option value="">All sources</option>
-        <option value="job-root">Jobs</option>
-        <option value="course-root">Courses</option>
-        <option value="skill">Skills</option>
-      </select>
-      <select class="vector-filter" id="vectorSkillFilter" aria-label="Skill">
-        <option value="">All skills</option>
-      </select>
-      <select class="vector-filter" id="vectorSectorFilter" aria-label="Sector">
-        <option value="">All sectors</option>
-      </select>
-      <select class="vector-filter" id="vectorTypeFilter" aria-label="Skill type">
-        <option value="">All skill types</option>
-      </select>
-      <select class="vector-filter" id="vectorJobFilter" aria-label="Job">
-        <option value="">All jobs</option>
-      </select>
-      <select class="vector-filter" id="vectorCourseFilter" aria-label="Course or module">
-        <option value="">All courses</option>
-      </select>
-      <select class="vector-filter" id="vectorExtractorFilter" aria-label="Extractor">
-        <option value="">All extractors</option>
-      </select>
+      <div class="vector-basic-filters" id="vectorBasicFilters">
+        <select class="vector-filter" id="vectorSourceFilter" aria-label="Source">
+          <option value="">All sources</option>
+          <option value="job-root">Jobs</option>
+          <option value="course-root">Courses</option>
+          <option value="skill">Skills</option>
+        </select>
+        <select class="vector-filter" id="vectorSkillFilter" aria-label="Skill">
+          <option value="">All skills</option>
+        </select>
+        <select class="vector-filter" id="vectorSectorFilter" aria-label="Sector">
+          <option value="">All sectors</option>
+        </select>
+        <select class="vector-filter" id="vectorTypeFilter" aria-label="Skill type">
+          <option value="">All skill types</option>
+        </select>
+        <select class="vector-filter" id="vectorJobFilter" aria-label="Job">
+          <option value="">All jobs</option>
+        </select>
+        <select class="vector-filter" id="vectorCourseFilter" aria-label="Course or module">
+          <option value="">All courses</option>
+        </select>
+        <select class="vector-filter" id="vectorExtractorFilter" aria-label="Extractor">
+          <option value="">All extractors</option>
+        </select>
+      </div>
+      <button class="btn btn-on-dark btn-sm" id="advancedModeBtn" type="button" aria-pressed="false">Advanced Mode</button>
       <input class="vector-search" id="vectorSearch" type="search" placeholder="Find a skill, job, or course">
       <button class="btn btn-on-dark btn-sm" id="vectorSearchBtn" type="button">Focus</button>
       <button class="btn btn-on-dark btn-sm" id="clearVectorFiltersBtn" type="button">Clear</button>
@@ -188,6 +315,24 @@
       <button class="btn btn-on-dark btn-sm" id="pauseVectorBtn" type="button">Pause</button>
     </div>
   </div>
+
+  <div class="vector-advanced" id="vectorAdvancedPanel">
+    <div class="vector-advanced-head">
+      <div>
+        <div class="vector-title">Advanced Comparative View</div>
+        <div class="vector-advanced-copy">Tick multiple jobs, qualifications, sectors, skills, or extractors to compare their clusters in the same vector space. Selections are matched with OR logic inside a group and AND logic across groups. The graph updates live, and you can use the button here to jump back to the visualization.</div>
+      </div>
+      <div class="vector-advanced-cta">
+        <div class="vector-advanced-summary" id="vectorAdvancedSummary">
+          <span class="vector-chip">No comparison filters selected yet.</span>
+        </div>
+        <button class="btn btn-on-dark btn-sm" id="showVectorSpaceBtn" type="button">Show Vector Space</button>
+        <span class="vector-advanced-note">Applies filters and closes this panel.</span>
+      </div>
+    </div>
+    <div class="vector-advanced-grid" id="vectorAdvancedGroups"></div>
+  </div>
+
   <div class="vector-stage">
     <div id="skillVectorGraph"></div>
     <div class="vector-empty active" id="vectorEmpty">
@@ -234,6 +379,12 @@ const vectorSearchBtn = document.getElementById('vectorSearchBtn');
 const clearVectorFiltersBtn = document.getElementById('clearVectorFiltersBtn');
 const downloadVectorJsonBtn = document.getElementById('downloadVectorJsonBtn');
 const downloadVectorCsvBtn = document.getElementById('downloadVectorCsvBtn');
+const advancedModeBtn = document.getElementById('advancedModeBtn');
+const vectorBasicFilters = document.getElementById('vectorBasicFilters');
+const vectorAdvancedPanel = document.getElementById('vectorAdvancedPanel');
+const vectorAdvancedGroups = document.getElementById('vectorAdvancedGroups');
+const vectorAdvancedSummary = document.getElementById('vectorAdvancedSummary');
+const showVectorSpaceBtn = document.getElementById('showVectorSpaceBtn');
 const vectorFilterControls = {
   source: document.getElementById('vectorSourceFilter'),
   skill: document.getElementById('vectorSkillFilter'),
@@ -244,12 +395,48 @@ const vectorFilterControls = {
   extractor: document.getElementById('vectorExtractorFilter'),
 };
 const vectorPanel = document.getElementById('vectorPanel');
+const advancedFilterDefinitions = [
+  { key:'source', title:'Sources', emptyLabel:'No sources', valueLabel:value => ({ 'job-root':'Jobs', 'course-root':'Courses', 'skill':'Skills' }[value] || value) },
+  { key:'skill', title:'Skills', emptyLabel:'No skills' },
+  { key:'sector', title:'Sectors', emptyLabel:'No sectors' },
+  { key:'type', title:'Skill Types', emptyLabel:'No skill types' },
+  { key:'job', title:'Jobs', emptyLabel:'No jobs' },
+  { key:'course', title:'Qualifications', emptyLabel:'No courses' },
+  { key:'extractor', title:'Extractors', emptyLabel:'No extractors' },
+];
 let vectorGraph = null;
 let vectorPaused = false;
 let selectedNodeId = null;
 let selectedLinkKey = null;
 let currentGraphData = { nodes:[], links:[] };
 let rawVectorData = null;
+let advancedMode = false;
+let advancedSelections = createEmptyAdvancedSelections();
+let advancedOptionCatalog = createEmptyAdvancedCatalog();
+
+function createEmptyAdvancedSelections() {
+  return {
+    source: new Set(),
+    skill: new Set(),
+    sector: new Set(),
+    type: new Set(),
+    job: new Set(),
+    course: new Set(),
+    extractor: new Set(),
+  };
+}
+
+function createEmptyAdvancedCatalog() {
+  return {
+    source: [],
+    skill: [],
+    sector: [],
+    type: [],
+    job: [],
+    course: [],
+    extractor: [],
+  };
+}
 
 function downloadBlob(filename, content, type) {
   const blob = new Blob([content], { type });
@@ -267,6 +454,7 @@ function exportableGraphData() {
   return {
     exported_at: new Date().toISOString(),
     filters: selectedVectorFilters(),
+    advanced_mode: advancedMode,
     counts: {
       nodes: currentGraphData.nodes.length,
       links: currentGraphData.links.length,
@@ -453,76 +641,228 @@ function setSelectOptions(select, values, labelFn = value => value) {
   select.value = values.includes(currentValue) ? currentValue : '';
 }
 
-function populateVectorFilters(data) {
+function uniqueSorted(values) {
+  return [...new Set(values.filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right)));
+}
+
+function buildAdvancedCatalog(data) {
   const nodes = data.nodes || [];
   const skills = nodes
     .filter(node => node.group === 'skill')
     .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
-  const jobRoots = nodes
+  const jobs = nodes
     .filter(node => node.group === 'job-root')
     .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
-  const courseRoots = nodes
+  const courses = nodes
     .filter(node => node.group === 'course-root')
     .sort((a, b) => (a.full_label || a.label).localeCompare(b.full_label || b.label));
-  setSelectOptions(vectorFilterControls.skill, skills.map(node => node.id), id => {
-    const node = skills.find(item => item.id === id);
-    return node?.full_label || node?.label || id;
+  return {
+    source: [
+      { value:'job-root', label:'Jobs' },
+      { value:'course-root', label:'Qualifications' },
+      { value:'skill', label:'Skills' },
+    ],
+    skill: skills.map(node => ({ value:node.id, label:node.full_label || node.label || node.id })),
+    sector: uniqueSorted(nodes.map(node => node.sector)).map(value => ({ value, label:value })),
+    type: uniqueSorted(skills.map(node => node.skill_type)).map(value => ({ value, label:value })),
+    job: jobs.map(node => ({ value:node.id, label:node.full_label || node.label || node.id })),
+    course: courses.map(node => ({ value:node.id, label:node.full_label || node.label || node.id })),
+    extractor: uniqueSorted(skills.map(node => node.source)).map(value => ({ value, label:value })),
+  };
+}
+
+function populateVectorFilters(data) {
+  const catalog = buildAdvancedCatalog(data);
+  advancedOptionCatalog = catalog;
+  setSelectOptions(vectorFilterControls.skill, catalog.skill.map(option => option.value), value => catalog.skill.find(option => option.value === value)?.label || value);
+  setSelectOptions(vectorFilterControls.job, catalog.job.map(option => option.value), value => catalog.job.find(option => option.value === value)?.label || value);
+  setSelectOptions(vectorFilterControls.course, catalog.course.map(option => option.value), value => catalog.course.find(option => option.value === value)?.label || value);
+  setSelectOptions(vectorFilterControls.sector, catalog.sector.map(option => option.value));
+  setSelectOptions(vectorFilterControls.type, catalog.type.map(option => option.value));
+  setSelectOptions(vectorFilterControls.extractor, catalog.extractor.map(option => option.value));
+  renderAdvancedGroups();
+}
+
+function syncBasicFiltersToAdvanced() {
+  Object.entries(vectorFilterControls).forEach(([key, control]) => {
+    advancedSelections[key].clear();
+    if (control?.value) advancedSelections[key].add(control.value);
   });
-  setSelectOptions(vectorFilterControls.job, jobRoots.map(node => node.id), id => {
-    const node = jobRoots.find(item => item.id === id);
-    return node?.full_label || node?.label || id;
+}
+
+function syncAdvancedFiltersToBasic() {
+  Object.entries(vectorFilterControls).forEach(([key, control]) => {
+    if (!control) return;
+    const values = Array.from(advancedSelections[key] || []);
+    control.value = values[0] || '';
   });
-  setSelectOptions(vectorFilterControls.course, courseRoots.map(node => node.id), id => {
-    const node = courseRoots.find(item => item.id === id);
-    return node?.full_label || node?.label || id;
+}
+
+function setAdvancedMode(enabled) {
+  advancedMode = enabled;
+  if (advancedMode) {
+    syncBasicFiltersToAdvanced();
+  } else {
+    syncAdvancedFiltersToBasic();
+  }
+  advancedModeBtn.classList.toggle('active', advancedMode);
+  advancedModeBtn.setAttribute('aria-pressed', advancedMode ? 'true' : 'false');
+  advancedModeBtn.textContent = advancedMode ? 'Basic Mode' : 'Advanced Mode';
+  vectorBasicFilters.classList.toggle('vector-hidden', advancedMode);
+  vectorAdvancedPanel.classList.toggle('active', advancedMode);
+  renderAdvancedGroups();
+  applyVectorFilters();
+}
+
+function renderAdvancedSummary() {
+  if (!vectorAdvancedSummary) return;
+  const chips = advancedFilterDefinitions
+    .map(definition => {
+      const count = advancedSelections[definition.key]?.size || 0;
+      if (!count) return '';
+      return `<span class="vector-chip">${definition.title}: ${count}</span>`;
+    })
+    .filter(Boolean);
+  vectorAdvancedSummary.innerHTML = chips.length ? chips.join('') : '<span class="vector-chip">No comparison filters selected yet.</span>';
+}
+
+function optionLabelForGroup(key, value) {
+  const option = (advancedOptionCatalog[key] || []).find(item => item.value === value);
+  return option?.label || value;
+}
+
+function renderAdvancedGroups() {
+  if (!vectorAdvancedGroups) return;
+  renderAdvancedSummary();
+  if (!advancedMode) {
+    vectorAdvancedGroups.innerHTML = '';
+    return;
+  }
+  vectorAdvancedGroups.innerHTML = advancedFilterDefinitions.map(definition => {
+    const options = advancedOptionCatalog[definition.key] || [];
+    const selectedCount = advancedSelections[definition.key]?.size || 0;
+    const optionMarkup = options.length
+      ? options.map(option => `
+          <label class="vector-advanced-option" data-filter-option="${definition.key}" data-filter-label="${String(option.label).toLowerCase()}">
+            <input type="checkbox" data-filter-checkbox="${definition.key}" value="${option.value}" ${advancedSelections[definition.key].has(option.value) ? 'checked' : ''}>
+            <span>${option.label}</span>
+          </label>
+        `).join('')
+      : `<div class="vector-advanced-empty">${definition.emptyLabel}</div>`;
+    return `
+      <section class="vector-advanced-group" data-filter-group="${definition.key}">
+        <div class="vector-advanced-group-head">
+          <div>
+            <div class="vector-advanced-group-title">${definition.title}</div>
+            <div class="vector-advanced-count">${selectedCount} selected</div>
+          </div>
+        </div>
+        <div class="vector-advanced-tools">
+          <input class="vector-advanced-search" type="search" data-filter-search="${definition.key}" placeholder="Search ${definition.title.toLowerCase()}">
+        </div>
+        <div class="vector-advanced-actions">
+          <button class="vector-advanced-link" type="button" data-filter-select-visible="${definition.key}">Select visible</button>
+          <button class="vector-advanced-link" type="button" data-filter-clear-group="${definition.key}">Clear group</button>
+        </div>
+        <div class="vector-advanced-list">${optionMarkup}</div>
+      </section>
+    `;
+  }).join('');
+
+  vectorAdvancedGroups.querySelectorAll('[data-filter-checkbox]').forEach(input => {
+    input.addEventListener('change', event => {
+      const key = event.target.getAttribute('data-filter-checkbox');
+      const set = advancedSelections[key];
+      if (!set) return;
+      if (event.target.checked) set.add(event.target.value);
+      else set.delete(event.target.value);
+      renderAdvancedGroups();
+      applyVectorFilters();
+    });
   });
-  setSelectOptions(vectorFilterControls.sector, [...new Set(nodes.map(node => node.sector).filter(Boolean))].sort());
-  setSelectOptions(vectorFilterControls.type, [...new Set(skills.map(node => node.skill_type).filter(Boolean))].sort());
-  setSelectOptions(vectorFilterControls.extractor, [...new Set(skills.map(node => node.source).filter(Boolean))].sort());
+
+  vectorAdvancedGroups.querySelectorAll('[data-filter-search]').forEach(input => {
+    input.addEventListener('input', event => {
+      const key = event.target.getAttribute('data-filter-search');
+      const group = vectorAdvancedGroups.querySelector(`[data-filter-group="${key}"]`);
+      const term = event.target.value.trim().toLowerCase();
+      group?.querySelectorAll(`[data-filter-option="${key}"]`).forEach(option => {
+        const label = option.getAttribute('data-filter-label') || '';
+        option.classList.toggle('vector-hidden', Boolean(term) && !label.includes(term));
+      });
+    });
+  });
+
+  vectorAdvancedGroups.querySelectorAll('[data-filter-select-visible]').forEach(button => {
+    button.addEventListener('click', event => {
+      const key = event.target.getAttribute('data-filter-select-visible');
+      const group = vectorAdvancedGroups.querySelector(`[data-filter-group="${key}"]`);
+      group?.querySelectorAll(`[data-filter-checkbox="${key}"]`).forEach(input => {
+        if (input.closest('.vector-hidden')) return;
+        input.checked = true;
+        advancedSelections[key].add(input.value);
+      });
+      renderAdvancedGroups();
+      applyVectorFilters();
+    });
+  });
+
+  vectorAdvancedGroups.querySelectorAll('[data-filter-clear-group]').forEach(button => {
+    button.addEventListener('click', event => {
+      const key = event.target.getAttribute('data-filter-clear-group');
+      advancedSelections[key]?.clear();
+      renderAdvancedGroups();
+      applyVectorFilters();
+    });
+  });
 }
 
 function selectedVectorFilters() {
-  return Object.fromEntries(Object.entries(vectorFilterControls).map(([key, control]) => [key, control?.value || '']));
+  if (advancedMode) {
+    return Object.fromEntries(Object.keys(vectorFilterControls).map(key => [key, Array.from(advancedSelections[key] || [])]));
+  }
+  return Object.fromEntries(
+    Object.entries(vectorFilterControls).map(([key, control]) => [key, control?.value ? [control.value] : []])
+  );
+}
+
+function hasActiveFilters(filters) {
+  return Object.values(filters).some(values => Array.isArray(values) && values.length);
+}
+
+function nodeMatchesFilters(node, filters) {
+  if (filters.source.length && !filters.source.includes(node.group)) return false;
+  if (filters.skill.length && !filters.skill.includes(node.id)) return false;
+  if (filters.sector.length && !filters.sector.includes(node.sector)) return false;
+  if (filters.type.length && !filters.type.includes(node.skill_type)) return false;
+  if (filters.extractor.length && !filters.extractor.includes(node.source)) return false;
+  if (filters.job.length && !filters.job.includes(node.id)) return false;
+  if (filters.course.length && !filters.course.includes(node.id)) return false;
+  return true;
 }
 
 function filteredVectorData(data) {
   if (!data) return { has_visual_data:false, nodes:[], edges:[], counts:{ nodes:0, edges:0, roots:0, skills:0 } };
   const filters = selectedVectorFilters();
-  const hasFilters = Object.values(filters).some(Boolean);
-  if (!hasFilters) return data;
+  if (!hasActiveFilters(filters)) return data;
 
-  const nodeById = new Map(data.nodes.map(node => [node.id, node]));
   const visible = new Set();
-  const matchingSkillIds = new Set();
-  const matchingRootIds = new Set();
+  const matchingSkillIds = new Set(filters.skill);
+  const matchingRootIds = new Set([...filters.job, ...filters.course]);
 
   data.nodes.forEach(node => {
-    let matches = true;
-    if (filters.source && node.group !== filters.source) matches = false;
-    if (filters.skill && node.id !== filters.skill) matches = false;
-    if (filters.sector && node.sector !== filters.sector) matches = false;
-    if (filters.type && node.skill_type !== filters.type) matches = false;
-    if (filters.extractor && node.source !== filters.extractor) matches = false;
-    if (filters.job && node.id !== filters.job) matches = false;
-    if (filters.course && node.id !== filters.course) matches = false;
-    if (!matches) return;
+    if (!nodeMatchesFilters(node, filters)) return;
     visible.add(node.id);
     if (node.group === 'skill') matchingSkillIds.add(node.id);
     if (node.group === 'job-root' || node.group === 'course-root') matchingRootIds.add(node.id);
   });
 
-  if (filters.skill) matchingSkillIds.add(filters.skill);
-  if (filters.job) matchingRootIds.add(filters.job);
-  if (filters.course) matchingRootIds.add(filters.course);
-
   data.edges.forEach(edge => {
     const source = linkEndpointId(edge.source);
     const target = linkEndpointId(edge.target);
     if (edge.group === 'evidence') {
-      const sourceNode = nodeById.get(source);
-      const targetNode = nodeById.get(target);
-      const rootId = sourceNode?.group === 'skill' ? target : source;
-      const skillId = sourceNode?.group === 'skill' ? source : target;
+      const rootId = String(source).startsWith('job-') || String(source).startsWith('course-') || String(source).startsWith('module-') ? source : target;
+      const skillId = rootId === source ? target : source;
       if (matchingSkillIds.has(skillId) || matchingRootIds.has(rootId)) {
         visible.add(rootId);
         visible.add(skillId);
@@ -559,13 +899,33 @@ function applyVectorFilters() {
   renderVectorGraph(filteredVectorData(rawVectorData));
 }
 
+function showFilteredVectorSpace() {
+  applyVectorFilters();
+  if (advancedMode) setAdvancedMode(false);
+  setTimeout(() => vectorGraph?.zoomToFit(600, 90), 120);
+}
+
+function activeFilterSummaryText() {
+  const filters = selectedVectorFilters();
+  const parts = advancedFilterDefinitions
+    .map(definition => {
+      const values = filters[definition.key] || [];
+      if (!values.length) return '';
+      if (values.length === 1) return `${definition.title}: ${optionLabelForGroup(definition.key, values[0])}`;
+      return `${definition.title}: ${values.length} selected`;
+    })
+    .filter(Boolean);
+  return parts.join(' | ');
+}
+
 function renderVectorGraph(data) {
   const hasData = data.has_visual_data && data.nodes.length;
   vectorEmpty.classList.toggle('active', !hasData);
   vectorNodeCount.textContent = `${data.counts.nodes} nodes`;
   vectorEdgeCount.textContent = `${data.counts.edges} strands`;
+  const comparisonSummary = activeFilterSummaryText();
   vectorStatus.textContent = hasData
-    ? `${data.counts.roots} roots and ${data.counts.skills} skill nodes. Drag, scroll, and orbit freely.`
+    ? `${advancedMode && comparisonSummary ? `Advanced comparison active. ${comparisonSummary}. ` : ''}${data.counts.roots} roots and ${data.counts.skills} skill nodes. Drag, scroll, and orbit freely.`
     : 'No skill vector data for the current filters.';
   if (!hasData) {
     currentGraphData = { nodes:[], links:[] };
@@ -643,12 +1003,16 @@ fetch(vectorApiUrl, { headers:{ Accept:'application/json' } })
   });
 
 fitVectorBtn.addEventListener('click', () => vectorGraph?.zoomToFit(600, 90));
-Object.values(vectorFilterControls).forEach(control => control?.addEventListener('change', applyVectorFilters));
+Object.values(vectorFilterControls).forEach(control => control?.addEventListener('change', () => {
+  if (!advancedMode) applyVectorFilters();
+}));
 clearVectorFiltersBtn.addEventListener('click', () => {
   Object.values(vectorFilterControls).forEach(control => {
     if (control) control.value = '';
   });
+  advancedSelections = createEmptyAdvancedSelections();
   vectorSearch.value = '';
+  renderAdvancedGroups();
   applyVectorFilters();
 });
 downloadVectorJsonBtn.addEventListener('click', () => {
@@ -675,6 +1039,8 @@ pauseVectorBtn.addEventListener('click', () => {
   if (!vectorPaused) vectorGraph?.resumeAnimation?.();
   pauseVectorBtn.textContent = vectorPaused ? 'Resume' : 'Pause';
 });
+advancedModeBtn?.addEventListener('click', () => setAdvancedMode(!advancedMode));
+showVectorSpaceBtn?.addEventListener('click', showFilteredVectorSpace);
 window.addEventListener('resize', () => {
   vectorGraph?.width(vectorContainer.clientWidth || window.innerWidth);
   vectorGraph?.height(vectorContainer.clientHeight || window.innerHeight - 57);

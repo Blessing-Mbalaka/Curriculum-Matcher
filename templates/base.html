@@ -662,6 +662,9 @@ body {
         <a href="{% url 'methodology' %}" class="nav-item {% if request.resolver_match.url_name == 'methodology' %}active{% endif %}">
           <span class="nav-dot"></span> Methodology
         </a>
+        <a href="{% url 'summary' %}" class="nav-item {% if request.resolver_match.url_name == 'summary' %}active{% endif %}">
+          <span class="nav-dot"></span> Summary
+        </a>
         <a href="{% url 'task-list' %}" class="nav-item {% if request.resolver_match.url_name == 'task-list' %}active{% endif %}">
           <span class="nav-dot"></span> Background Tasks
         </a>

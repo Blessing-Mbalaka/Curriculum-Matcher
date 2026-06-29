@@ -18,7 +18,7 @@ from dashboard.views import (
     CleanedSkillCsvDownloadView, JobCsvExportView, DataExportVisualCsvExportView,
     SkillVectorSpaceView, SkillVectorSpaceCsvExportView, HumanOversightView,
     SkillAliasCreateView, SkillAliasReviewView, ReviewedAliasRefreshView, RagChatbotView, RagChatbotApiView,
-    DashboardVisualCsvExportView, AnalysisVisualCsvExportView,
+    DashboardVisualCsvExportView, AnalysisVisualCsvExportView, SummaryView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
     skill_vector_space, course_skill_training_readiness,
 )
@@ -85,6 +85,7 @@ urlpatterns = [
     path("rag-chatbot/", RagChatbotView.as_view(), name="rag-chatbot"),
     path("api/rag-chatbot/", RagChatbotApiView.as_view(), name="rag-chatbot-api"),
     path("methodology/", MethodologyView.as_view(), name="methodology"),
+    path("summary/", SummaryView.as_view(), name="summary"),
 
     # Tasks
     path("tasks/", TaskListView.as_view(), name="task-list"),

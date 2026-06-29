@@ -508,6 +508,11 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(page_response, "vectorJobFilter")
         self.assertContains(page_response, "vectorCourseFilter")
         self.assertContains(page_response, "vectorExtractorFilter")
+        self.assertContains(page_response, "Advanced Mode")
+        self.assertContains(page_response, "Advanced Comparative View")
+        self.assertContains(page_response, "vectorAdvancedGroups")
+        self.assertContains(page_response, "Qualifications")
+        self.assertContains(page_response, "Tick multiple jobs, qualifications, sectors, skills, or extractors")
         self.assertContains(page_response, "clearVectorFiltersBtn")
         self.assertContains(page_response, "Download Visual CSV")
         self.assertContains(page_response, "Explain semantic vector space")
@@ -525,6 +530,59 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(csv_response, "record_type,id,source,target,label,group,value")
         self.assertContains(csv_response, "node")
         self.assertContains(csv_response, "edge")
+
+    def test_skill_vector_space_api_accepts_multi_value_filters(self):
+        self.job.title = "CEO"
+        self.job.category = "Leadership"
+        self.job.skill_entities = [{
+            "id": "skill-leadership",
+            "skill": "leadership",
+            "label": "SKILL",
+            "skill_type": "soft",
+            "source": "ner",
+        }]
+        self.job.save(update_fields=["title", "category", "skill_entities"])
+        second_job = JobAdvert.objects.create(
+            title="Data Analyst",
+            category="Analytics",
+            description="Analytics and SQL",
+            skill_entities=[{
+                "id": "skill-data-analysis",
+                "skill": "data analysis",
+                "label": "SKILL",
+                "skill_type": "technical",
+                "source": "ner",
+            }],
+        )
+
+        response = self.client.get(
+            reverse("skill-vector-space-api"),
+            [("source", "job"), ("job_title", "CEO"), ("job_title", "Data Analyst")],
+        )
+        data = response.json()
+
+        self.assertTrue(data["has_visual_data"])
+        labels = {node["full_label"] for node in data["nodes"] if node["group"] == "job-root"}
+        self.assertTrue(any("CEO" in label for label in labels))
+        self.assertTrue(any("Data Analyst" in label for label in labels))
+        self.assertFalse(any(node["group"] == "course-root" for node in data["nodes"]))
+
+    def test_summary_page_counts_unique_courses_and_jobs(self):
+        Course.objects.create(code="MBA102", name="MBA", university_name="University of Johannesburg")
+        Module.objects.create(course=self.course, name="Strategy", content="Strategy")
+        Module.objects.create(course=self.course, name="Leadership", content="Leadership")
+        JobAdvert.objects.create(title="Strategy Manager", company="Alpha", category="Management", description="Leadership")
+        JobAdvert.objects.create(title="Data Analyst", company="Beta", category="Analytics", description="SQL and analytics")
+
+        response = self.client.get(reverse("summary"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Unique Courses and Jobs")
+        self.assertContains(response, "Top Course Names")
+        self.assertContains(response, "Top Job Titles")
+        self.assertContains(response, "Top Universities")
+        self.assertContains(response, "Top Job Categories")
+        self.assertContains(response, "Summary")
 
     def test_data_export_infers_sector_when_source_has_no_category(self):
         self.job.title = "Cyber Security Analyst"
@@ -877,11 +935,21 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Role Skill Divergence")
         self.assertContains(response, "Diverging bar chart of skill emphasis against the job-market baseline")
         self.assertContains(response, "role-divergence-data")
+        self.assertContains(response, "results-comparison-data")
+        self.assertContains(response, "Comparison Mode")
+        self.assertContains(response, "Compare Role Profiles")
+        self.assertContains(response, "resultsComparisonGroups")
+        self.assertContains(response, "The skill correlation matrix and role-skill divergence charts update")
         self.assertContains(response, "roleDivergencePlots")
         self.assertContains(response, "roleDivergenceSearch")
-        self.assertContains(response, "Search job title or role profile")
+        self.assertContains(response, "Choose role")
+        self.assertContains(response, "Start typing a role name from the database")
+        self.assertContains(response, "roleDivergenceRoleNames")
         self.assertContains(response, "roleDivergenceLimit")
         self.assertContains(response, "Top 25")
+        self.assertContains(response, "Unique Job Roles In Current Comparison")
+        self.assertContains(response, "These distinct job-role names reflect the current role-divergence selection")
+        self.assertContains(response, "Total:")
         self.assertContains(response, "Pearson correlation coefficients across role requirement profiles")
         self.assertContains(response, "skill-correlation-data")
         self.assertContains(response, "data-tab=\"heatmapTab\"")

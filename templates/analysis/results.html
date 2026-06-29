@@ -42,6 +42,62 @@
 .results-tabs { display:flex; gap:6px; margin-bottom:18px; border-bottom:1px solid var(--rule); }
 .results-tab { border:1px solid var(--rule); border-bottom:0; background:#fff; color:var(--muted); padding:9px 15px; border-radius:8px 8px 0 0; cursor:pointer; font-weight:700; font-size:12px; }
 .results-tab.active { background:#0b0b0b; color:#fff; border-color:#0b0b0b; }
+.results-comparison-bar {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin:-4px 0 18px;
+}
+.results-comparison-summary {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+  min-height:34px;
+}
+.results-comparison-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  background:#fffaf5;
+  border:1px solid #ffcf9f;
+  color:var(--ink);
+  font-size:11px;
+}
+.results-comparison-panel {
+  display:none;
+  margin:0 0 18px;
+  padding:16px;
+  border:1px solid var(--rule);
+  border-radius:8px;
+  background:linear-gradient(180deg, #fffdf9 0%, #fff7ed 100%);
+}
+.results-comparison-panel.active { display:block; }
+.results-comparison-head {
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:12px;
+}
+.results-comparison-copy { color:var(--muted); font-size:12px; max-width:780px; }
+.results-comparison-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.results-comparison-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
+.results-comparison-group { border:1px solid var(--rule); border-radius:8px; background:#fff; padding:12px; }
+.results-comparison-title { font-weight:800; font-size:12px; color:var(--ink); }
+.results-comparison-count { color:var(--muted); font-size:11px; margin-top:2px; }
+.results-comparison-tools { display:flex; align-items:center; gap:8px; margin:10px 0; }
+.results-comparison-search { width:100%; min-width:0; }
+.results-comparison-links { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.results-comparison-link { border:0; background:none; color:var(--uj-orange); cursor:pointer; font-size:11px; padding:0; }
+.results-comparison-list { max-height:180px; overflow:auto; display:grid; gap:6px; }
+.results-comparison-option { display:flex; align-items:flex-start; gap:8px; padding:6px 8px; border-radius:8px; background:var(--soft); }
+.results-comparison-option span { font-size:12px; line-height:1.35; word-break:break-word; }
+.results-comparison-empty { color:var(--muted); font-size:12px; }
+.results-hidden { display:none !important; }
 .tab-panel { display:none; }
 .tab-panel.active { display:block; }
 .results-visuals { display:grid; grid-template-columns:1fr; gap:20px; margin-bottom:24px; }
@@ -81,8 +137,31 @@
 .role-divergence-panel { min-height:320px; border-top:1px solid var(--rule); padding-top:18px; }
 .role-divergence-panel:first-child { border-top:0; padding-top:0; }
 .role-divergence-empty { display:grid; place-items:center; min-height:360px; color:var(--muted); text-align:center; }
-.role-divergence-controls { display:grid; grid-template-columns:minmax(220px,1fr) 160px; gap:10px; align-items:end; margin:14px 0 20px; }
+.role-divergence-controls { display:grid; grid-template-columns:minmax(260px,1fr) 160px; gap:10px; align-items:end; margin:14px 0 20px; }
 .role-divergence-count { color:var(--muted); font-size:12px; margin:-8px 0 16px; }
+.role-summary-card { margin:0 0 18px; }
+.role-summary-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; margin-bottom:12px; }
+.role-summary-copy { color:var(--muted); font-size:12px; max-width:720px; }
+.role-summary-stat { font-family:var(--display); font-size:30px; font-weight:900; color:#0b0b0b; line-height:1; }
+.role-summary-substat { color:var(--muted); font-size:12px; margin-top:4px; text-align:right; }
+.role-summary-legend { display:flex; flex-wrap:wrap; gap:8px; }
+.role-summary-chip {
+  display:inline-flex;
+  align-items:center;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--rule);
+  background:#fffaf5;
+  color:var(--ink);
+  font-size:12px;
+  white-space:nowrap;
+}
+.role-summary-chip.is-total {
+  background:#0b0b0b;
+  border-color:#0b0b0b;
+  color:#fff;
+  font-weight:700;
+}
 .job-index-legend {
   display:grid;
   grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
@@ -150,7 +229,7 @@
 .mini-skill-help code { font-family:var(--mono); font-size:11px; color:#9a4a08; }
 .detail-panel { display:none; background:var(--soft); border-top:1px solid var(--rule); }
 .detail-panel.open { display:table-row; }
-@media (max-width:1000px) { .results-visuals, .results-filters, .heatmap-controls, .run-selector-card { grid-template-columns:1fr; } }
+@media (max-width:1000px) { .results-visuals, .results-filters, .heatmap-controls, .run-selector-card, .results-comparison-grid { grid-template-columns:1fr; } .role-summary-head, .results-comparison-head, .results-comparison-bar { flex-direction:column; } .role-summary-substat { text-align:left; } }
 @media (max-width:640px) { .mini-skill-row { grid-template-columns:1fr; } .mini-skill-counts { grid-column:auto; } .mini-skill-meta { text-align:left; } }
 </style>
 {% endblock %}
@@ -226,6 +305,27 @@
     <button class="results-tab" type="button" data-tab="roleDivergenceTab">Role Skill Divergence</button>
     <button class="results-tab" type="button" data-tab="suggestionsTab">Suggestions</button>
     <button class="results-tab" type="button" data-tab="matrixTab">Matrix</button>
+  </div>
+
+  <div class="results-comparison-bar">
+    <button class="btn btn-outline" id="resultsComparisonBtn" type="button" aria-pressed="false">Comparison Mode</button>
+    <div class="results-comparison-summary" id="resultsComparisonSummary">
+      <span class="results-comparison-chip">No comparison filters selected yet.</span>
+    </div>
+  </div>
+
+  <div class="results-comparison-panel" id="resultsComparisonPanel">
+    <div class="results-comparison-head">
+      <div>
+        <div class="card-label">Compare Role Profiles</div>
+        <div class="results-comparison-copy">Use the same comparison idea as the vector space to filter by roles, skills, sectors, companies, qualifications, and schools. The skill correlation matrix and role-skill divergence charts update from the selected job-role profiles.</div>
+      </div>
+      <div class="results-comparison-actions">
+        <button class="btn btn-primary btn-sm" id="resultsComparisonApplyBtn" type="button">Show Compared Visuals</button>
+        <button class="btn btn-outline btn-sm" id="resultsComparisonClearBtn" type="button">Clear Comparison</button>
+      </div>
+    </div>
+    <div class="results-comparison-grid" id="resultsComparisonGroups"></div>
   </div>
 
   <div class="tab-panel active" id="visualsTab">
@@ -315,7 +415,7 @@
         <div>
           <h2 class="correlation-title">Correlation Structure Between Skills</h2>
           <div class="correlation-subtitle">Pearson correlation coefficients across role requirement profiles</div>
-          <div class="correlation-meta">{{ skill_correlation_matrix.profile_count }} role requirement profile{{ skill_correlation_matrix.profile_count|pluralize }} analysed from the current results filter.</div>
+          <div class="correlation-meta" id="skillCorrelationMeta">{{ skill_correlation_matrix.profile_count }} role requirement profile{{ skill_correlation_matrix.profile_count|pluralize }} analysed from the current results filter.</div>
         </div>
         <div class="flex gap-2">
           <span class="badge badge-gold">Plotly</span>
@@ -343,7 +443,7 @@
         <div>
           <h2 class="correlation-title">Role Skill Divergence</h2>
           <div class="correlation-subtitle">Diverging bar chart of skill emphasis against the job-market baseline</div>
-          <div class="correlation-meta">{{ role_skill_divergence.profile_count }} role requirement profile{{ role_skill_divergence.profile_count|pluralize }} analysed from the current results filter.</div>
+          <div class="correlation-meta" id="roleDivergenceMeta">{{ role_skill_divergence.profile_count }} role requirement profile{{ role_skill_divergence.profile_count|pluralize }} analysed from the current results filter.</div>
         </div>
         <div class="flex gap-2">
           <span class="badge badge-gold">Diverging bar chart</span>
@@ -358,8 +458,9 @@
       </div>
       <div class="role-divergence-controls">
         <div>
-          <label class="form-label" for="roleDivergenceSearch">Search role</label>
-          <input class="form-control" id="roleDivergenceSearch" type="search" placeholder="Search job title or role profile">
+          <label class="form-label" for="roleDivergenceSearch">Choose role</label>
+          <input class="form-control" id="roleDivergenceSearch" type="search" list="roleDivergenceRoleNames" placeholder="Start typing a role name from the database">
+          <datalist id="roleDivergenceRoleNames"></datalist>
         </div>
         <div>
           <label class="form-label" for="roleDivergenceLimit">Show</label>
@@ -369,6 +470,26 @@
             <option value="50">Top 50</option>
             <option value="all">All</option>
           </select>
+        </div>
+      </div>
+      <div class="card role-summary-card">
+        <div class="role-summary-head">
+          <div>
+            <div class="card-label">Unique Job Roles In Current Comparison</div>
+            <div class="role-summary-copy">These distinct job-role names reflect the current role-divergence selection. Start typing one of these names above to open its chart faster.</div>
+          </div>
+          <div>
+            <div class="role-summary-stat" id="roleSummaryCount">{{ role_skill_divergence.roles|length }}</div>
+            <div class="role-summary-substat" id="roleSummarySubstat">unique role{{ role_skill_divergence.roles|length|pluralize }}</div>
+          </div>
+        </div>
+        <div class="role-summary-legend" id="roleSummaryLegend">
+          <span class="role-summary-chip is-total">Total: {{ role_skill_divergence.roles|length }}</span>
+          {% for role in role_skill_divergence.roles %}
+          <span class="role-summary-chip">{{ role.role }}</span>
+          {% empty %}
+          <span class="text-muted text-sm">No role profiles available for the current filter.</span>
+          {% endfor %}
         </div>
       </div>
       <div class="role-divergence-count" id="roleDivergenceCount"></div>
@@ -592,6 +713,7 @@ setTimeout(() => location.reload(), 5000);
 {{ plotly_heatmap_rows|json_script:"gap-heatmap-data" }}
 {{ skill_correlation_matrix|json_script:"skill-correlation-data" }}
 {{ role_skill_divergence|json_script:"role-divergence-data" }}
+{{ comparison_data|json_script:"results-comparison-data" }}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
@@ -599,7 +721,237 @@ const scatterPoints = JSON.parse(document.getElementById('scatter-data').textCon
 const gapHeatmapRows = JSON.parse(document.getElementById('gap-heatmap-data')?.textContent || '[]');
 const skillCorrelationMatrix = JSON.parse(document.getElementById('skill-correlation-data')?.textContent || '{}');
 const roleSkillDivergence = JSON.parse(document.getElementById('role-divergence-data')?.textContent || '{}');
+const resultsComparisonData = JSON.parse(document.getElementById('results-comparison-data')?.textContent || '{}');
+const comparisonDefinitions = [
+  { key:'role', title:'Jobs', emptyLabel:'No jobs' },
+  { key:'skill', title:'Skills', emptyLabel:'No skills' },
+  { key:'sector', title:'Sectors', emptyLabel:'No sectors' },
+  { key:'company', title:'Companies', emptyLabel:'No companies' },
+  { key:'course', title:'Qualifications', emptyLabel:'No qualifications' },
+  { key:'school', title:'Schools', emptyLabel:'No schools' },
+];
 const ctx = document.getElementById('gapChart');
+const comparisonButton = document.getElementById('resultsComparisonBtn');
+const comparisonPanel = document.getElementById('resultsComparisonPanel');
+const comparisonSummary = document.getElementById('resultsComparisonSummary');
+const comparisonGroups = document.getElementById('resultsComparisonGroups');
+const comparisonApplyBtn = document.getElementById('resultsComparisonApplyBtn');
+const comparisonClearBtn = document.getElementById('resultsComparisonClearBtn');
+const skillCorrelationMeta = document.getElementById('skillCorrelationMeta');
+const roleDivergenceMeta = document.getElementById('roleDivergenceMeta');
+const roleSummaryCount = document.getElementById('roleSummaryCount');
+const roleSummarySubstat = document.getElementById('roleSummarySubstat');
+const roleSummaryLegend = document.getElementById('roleSummaryLegend');
+const roleSearchInput = document.getElementById('roleDivergenceSearch');
+const roleLimitSelect = document.getElementById('roleDivergenceLimit');
+let comparisonMode = false;
+let comparisonSelections = createEmptyComparisonSelections();
+
+function createEmptyComparisonSelections() {
+  return {
+    role: new Set(),
+    skill: new Set(),
+    sector: new Set(),
+    company: new Set(),
+    course: new Set(),
+    school: new Set(),
+  };
+}
+
+function uniqueSorted(values) {
+  return [...new Set((values || []).filter(Boolean))].sort((left, right) => String(left).localeCompare(String(right)));
+}
+
+function selectedComparisonFilters() {
+  return Object.fromEntries(Object.keys(comparisonSelections).map(key => [key, Array.from(comparisonSelections[key] || [])]));
+}
+
+function hasActiveComparisonFilters(filters = selectedComparisonFilters()) {
+  return Object.values(filters).some(values => Array.isArray(values) && values.length);
+}
+
+function includesAny(values, selected) {
+  return selected.some(value => values.includes(value));
+}
+
+function comparisonProfileMatches(profile, filters) {
+  if (filters.role.length && !filters.role.includes(profile.role)) return false;
+  if (filters.skill.length && !includesAny(profile.skills || [], filters.skill)) return false;
+  if (filters.sector.length && !filters.sector.includes(profile.sector)) return false;
+  if (filters.company.length && !filters.company.includes(profile.company)) return false;
+  if (filters.course.length && !includesAny(profile.courses || [], filters.course)) return false;
+  if (filters.school.length && !includesAny(profile.schools || [], filters.school)) return false;
+  return true;
+}
+
+function activeComparisonProfiles() {
+  const profiles = resultsComparisonData.profiles || [];
+  const filters = selectedComparisonFilters();
+  if (!hasActiveComparisonFilters(filters)) return profiles;
+  return profiles.filter(profile => comparisonProfileMatches(profile, filters));
+}
+
+function pearson(leftValues, rightValues) {
+  const count = leftValues.length;
+  if (!count) return 0;
+  const leftMean = leftValues.reduce((sum, value) => sum + value, 0) / count;
+  const rightMean = rightValues.reduce((sum, value) => sum + value, 0) / count;
+  let numerator = 0;
+  let leftVar = 0;
+  let rightVar = 0;
+  leftValues.forEach((left, index) => {
+    const right = rightValues[index];
+    numerator += (left - leftMean) * (right - rightMean);
+    leftVar += (left - leftMean) ** 2;
+    rightVar += (right - rightMean) ** 2;
+  });
+  const denominator = Math.sqrt(leftVar * rightVar);
+  return denominator ? numerator / denominator : 0;
+}
+
+function buildSkillCorrelationMatrixFromProfiles(profileRows, limit = 16) {
+  const profileSkills = profileRows.map(profile => new Set(profile.skills || [])).filter(skills => skills.size);
+  const frequency = new Map();
+  profileSkills.forEach(skills => {
+    skills.forEach(skill => frequency.set(skill, (frequency.get(skill) || 0) + 1));
+  });
+  const selectedSkills = [...frequency.entries()]
+    .sort((left, right) => right[1] - left[1] || String(left[0]).localeCompare(String(right[0])))
+    .slice(0, limit)
+    .map(entry => entry[0]);
+  const vectors = Object.fromEntries(selectedSkills.map(skill => [skill, profileSkills.map(profile => profile.has(skill) ? 1 : 0)]));
+  const values = [];
+  const labels = [];
+  selectedSkills.forEach(rowSkill => {
+    const rowValues = [];
+    const rowLabels = [];
+    selectedSkills.forEach(colSkill => {
+      const value = rowSkill === colSkill ? 1 : pearson(vectors[rowSkill], vectors[colSkill]);
+      const bounded = Math.max(-1, Math.min(1, value));
+      rowValues.push(Number(bounded.toFixed(2)));
+      rowLabels.push(bounded.toFixed(2));
+    });
+    values.push(rowValues);
+    labels.push(rowLabels);
+  });
+  return { skills:selectedSkills, values, labels, profile_count:profileSkills.length };
+}
+
+function buildRoleSkillDivergenceFromProfiles(profileRows, roleLimit = 120, skillLimit = 9) {
+  const profiles = profileRows
+    .map(profile => ({ role: profile.role || 'Untitled role', skills: uniqueSorted(profile.skills || []) }))
+    .filter(profile => profile.skills.length);
+  const globalCounts = new Map();
+  profiles.forEach(profile => {
+    profile.skills.forEach(skill => globalCounts.set(skill, (globalCounts.get(skill) || 0) + 1));
+  });
+  const globalTotal = [...globalCounts.values()].reduce((sum, value) => sum + value, 0);
+  if (!profiles.length || !globalTotal) return { roles: [], profile_count: 0 };
+
+  const roles = new Map();
+  profiles.forEach(profile => {
+    const roleItem = roles.get(profile.role) || { profile_count:0, counts:new Map() };
+    roleItem.profile_count += 1;
+    profile.skills.forEach(skill => roleItem.counts.set(skill, (roleItem.counts.get(skill) || 0) + 1));
+    roles.set(profile.role, roleItem);
+  });
+
+  const rows = [];
+  roles.forEach((item, role) => {
+    const roleTotal = [...item.counts.values()].reduce((sum, value) => sum + value, 0);
+    const skills = uniqueSorted([...item.counts.keys(), ...globalCounts.keys()]);
+    const values = [];
+    skills.forEach(skill => {
+      const roleShare = (item.counts.get(skill) || 0) / Math.max(1, roleTotal);
+      const globalShare = (globalCounts.get(skill) || 0) / globalTotal;
+      const value = roleShare - globalShare;
+      if (Math.abs(value) < 0.005) return;
+      values.push({ skill, value:Number(value.toFixed(2)), label:value.toFixed(2) });
+    });
+    const selected = values
+      .sort((left, right) => Math.abs(right.value) - Math.abs(left.value) || String(left.skill).localeCompare(String(right.skill)))
+      .slice(0, skillLimit)
+      .sort((left, right) => left.value - right.value);
+    if (selected.length) {
+      rows.push({
+        role,
+        profile_count:item.profile_count,
+        skills:selected.map(row => row.skill),
+        values:selected.map(row => row.value),
+        labels:selected.map(row => row.label),
+      });
+    }
+  });
+  return {
+    roles: rows.sort((left, right) => right.profile_count - left.profile_count || String(left.role).localeCompare(String(right.role))).slice(0, roleLimit),
+    profile_count: profiles.length,
+  };
+}
+
+function getActiveSkillCorrelationMatrix() {
+  return hasActiveComparisonFilters()
+    ? buildSkillCorrelationMatrixFromProfiles(activeComparisonProfiles())
+    : skillCorrelationMatrix;
+}
+
+function getActiveRoleSkillDivergence() {
+  return hasActiveComparisonFilters()
+    ? buildRoleSkillDivergenceFromProfiles(activeComparisonProfiles())
+    : roleSkillDivergence;
+}
+
+function activeComparisonSummaryText() {
+  const filters = selectedComparisonFilters();
+  return comparisonDefinitions
+    .map(definition => {
+      const values = filters[definition.key] || [];
+      if (!values.length) return '';
+      if (values.length === 1) return `${definition.title}: ${values[0]}`;
+      return `${definition.title}: ${values.length} selected`;
+    })
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function renderComparisonSummary() {
+  if (!comparisonSummary) return;
+  const chips = comparisonDefinitions
+    .map(definition => {
+      const count = comparisonSelections[definition.key]?.size || 0;
+      return count ? `<span class="results-comparison-chip">${definition.title}: ${count}</span>` : '';
+    })
+    .filter(Boolean);
+  comparisonSummary.innerHTML = chips.length ? chips.join('') : '<span class="results-comparison-chip">No comparison filters selected yet.</span>';
+}
+
+function renderRoleSummaryLegend() {
+  if (!roleSummaryLegend) return;
+  const uniqueRoles = uniqueSorted(activeComparisonProfiles().map(profile => profile.role));
+  roleSummaryCount.textContent = uniqueRoles.length;
+  roleSummarySubstat.textContent = `unique role${uniqueRoles.length === 1 ? '' : 's'}`;
+  if (!uniqueRoles.length) {
+    roleSummaryLegend.innerHTML = '<span class="text-muted text-sm">No role profiles available for the current comparison filter.</span>';
+    return;
+  }
+  roleSummaryLegend.innerHTML = [
+    `<span class="role-summary-chip is-total">Total: ${uniqueRoles.length}</span>`,
+    ...uniqueRoles.map(role => `<span class="role-summary-chip">${role}</span>`),
+  ].join('');
+}
+
+function updateComparisonMeta() {
+  const profiles = activeComparisonProfiles();
+  const summary = activeComparisonSummaryText();
+  const profileText = `${profiles.length} role requirement profile${profiles.length === 1 ? '' : 's'} analysed from the current results filter.`;
+  skillCorrelationMeta.textContent = summary ? `${profileText} Comparison active: ${summary}.` : profileText;
+  roleDivergenceMeta.textContent = summary ? `${profileText} Comparison active: ${summary}.` : profileText;
+}
+
+function shortLabel(value, limit = 34) {
+  const text = String(value || '');
+  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
+}
+
 if (ctx) {
   new Chart(ctx, {
     type:'scatter',
@@ -620,8 +972,8 @@ if (ctx) {
       plugins:{
         legend:{ display:false },
         tooltip:{ callbacks:{ label(context) {
-          const p = context.raw;
-          return `${p.label}: matched ${p.x}, missing ${p.y}, avg ${p.score}%`;
+          const point = context.raw;
+          return `${point.label}: matched ${point.x}, missing ${point.y}, avg ${point.score}%`;
         }}}
       },
       scales:{
@@ -632,17 +984,12 @@ if (ctx) {
   });
 }
 
-function shortLabel(value, limit = 34) {
-  const text = String(value || '');
-  return text.length > limit ? `${text.slice(0, limit - 1)}...` : text;
-}
-
-function renderSkillCorrelationHeatmap(container) {
-  const skills = skillCorrelationMatrix.skills || [];
-  const values = skillCorrelationMatrix.values || [];
-  const labels = skillCorrelationMatrix.labels || [];
+function renderSkillCorrelationHeatmap(container, matrixData = getActiveSkillCorrelationMatrix()) {
+  const skills = matrixData.skills || [];
+  const values = matrixData.values || [];
+  const labels = matrixData.labels || [];
   if (!skills.length || !values.length) {
-    container.innerHTML = '<div class="plotly-heatmap-empty">No skill correlation data for the current filter.</div>';
+    container.innerHTML = '<div class="plotly-heatmap-empty">No skill correlation data for the current comparison filter.</div>';
     return;
   }
   const textAnnotations = [];
@@ -703,34 +1050,34 @@ function renderGapPlotlyHeatmap() {
   }
   renderSkillCorrelationHeatmap(container);
 }
-document.querySelector('[data-tab="heatmapTab"]')?.addEventListener('click', () => {
-  setTimeout(renderGapPlotlyHeatmap, 50);
-});
 
-function renderRoleSkillDivergence() {
+function renderRoleSkillDivergence(divergenceData = getActiveRoleSkillDivergence()) {
   const container = document.getElementById('roleDivergencePlots');
   const countLabel = document.getElementById('roleDivergenceCount');
-  const searchInput = document.getElementById('roleDivergenceSearch');
-  const limitSelect = document.getElementById('roleDivergenceLimit');
   if (!container) return;
   if (!window.Plotly) {
     container.innerHTML = '<div class="role-divergence-empty">Plotly could not load for the role divergence chart.</div>';
     return;
   }
-  const query = (searchInput?.value || '').trim().toLowerCase();
-  const selectedLimit = limitSelect?.value || '25';
-  const allRoles = roleSkillDivergence.roles || [];
-  const matchingRoles = query
-    ? allRoles.filter(role => String(role.role || '').toLowerCase().includes(query))
-    : allRoles;
-  const roles = selectedLimit === 'all'
-    ? matchingRoles
-    : matchingRoles.slice(0, Number(selectedLimit) || 25);
+  const query = (roleSearchInput?.value || '').trim().toLowerCase();
+  const selectedLimit = roleLimitSelect?.value || '25';
+  const allRoles = divergenceData.roles || [];
+  const exactMatches = query
+    ? allRoles.filter(role => String(role.role || '').trim().toLowerCase() === query)
+    : [];
+  const matchingRoles = exactMatches.length
+    ? exactMatches
+    : query
+      ? allRoles.filter(role => String(role.role || '').toLowerCase().includes(query))
+      : allRoles;
+  const roles = selectedLimit === 'all' ? matchingRoles : matchingRoles.slice(0, Number(selectedLimit) || 25);
   if (countLabel) {
-    countLabel.textContent = `${roles.length} of ${matchingRoles.length} matching role profile group${matchingRoles.length === 1 ? '' : 's'} shown`;
+    countLabel.textContent = exactMatches.length
+      ? `Showing ${roles.length} exact role match from the current comparison selection`
+      : `${roles.length} of ${matchingRoles.length} matching role profile group${matchingRoles.length === 1 ? '' : 's'} shown`;
   }
   if (!roles.length) {
-    container.innerHTML = '<div class="role-divergence-empty">No role skill divergence data for the current filter.</div>';
+    container.innerHTML = '<div class="role-divergence-empty">No role skill divergence data for the current comparison filter.</div>';
     return;
   }
   container.innerHTML = '';
@@ -746,7 +1093,7 @@ function renderRoleSkillDivergence() {
       x:role.values,
       y:role.skills,
       text:role.labels,
-      textposition:role.values.map(value => Number(value) >= 0 ? 'outside' : 'outside'),
+      textposition:role.values.map(() => 'outside'),
       marker:{
         color:role.values.map(value => Number(value) >= 0 ? '#c83a2f' : '#3f6fa9'),
         line:{ color:'#ffffff', width:1 },
@@ -782,13 +1129,134 @@ function renderRoleSkillDivergence() {
     });
   });
 }
+
+function populateRoleDivergenceTypeahead(divergenceData = getActiveRoleSkillDivergence()) {
+  const list = document.getElementById('roleDivergenceRoleNames');
+  if (!list) return;
+  const uniqueRoles = uniqueSorted((divergenceData.roles || []).map(role => String(role.role || '').trim()));
+  list.innerHTML = uniqueRoles.map(role => `<option value="${role.replace(/"/g, '&quot;')}"></option>`).join('');
+}
+
+function renderComparisonGroups() {
+  if (!comparisonGroups) return;
+  const catalog = resultsComparisonData.catalog || {};
+  comparisonGroups.innerHTML = comparisonDefinitions.map(definition => {
+    const options = catalog[definition.key] || [];
+    const count = comparisonSelections[definition.key]?.size || 0;
+    const optionMarkup = options.length
+      ? options.map(option => `
+        <label class="results-comparison-option" data-compare-option="${definition.key}" data-compare-label="${String(option).toLowerCase()}">
+          <input type="checkbox" data-compare-checkbox="${definition.key}" value="${option}" ${comparisonSelections[definition.key].has(option) ? 'checked' : ''}>
+          <span>${option}</span>
+        </label>
+      `).join('')
+      : `<div class="results-comparison-empty">${definition.emptyLabel}</div>`;
+    return `
+      <section class="results-comparison-group" data-compare-group="${definition.key}">
+        <div class="results-comparison-title">${definition.title}</div>
+        <div class="results-comparison-count">${count} selected</div>
+        <div class="results-comparison-tools">
+          <input class="form-control results-comparison-search" type="search" data-compare-search="${definition.key}" placeholder="Search ${definition.title.toLowerCase()}">
+        </div>
+        <div class="results-comparison-links">
+          <button class="results-comparison-link" type="button" data-compare-select-visible="${definition.key}">Select visible</button>
+          <button class="results-comparison-link" type="button" data-compare-clear-group="${definition.key}">Clear group</button>
+        </div>
+        <div class="results-comparison-list">${optionMarkup}</div>
+      </section>
+    `;
+  }).join('');
+
+  comparisonGroups.querySelectorAll('[data-compare-checkbox]').forEach(input => {
+    input.addEventListener('change', event => {
+      const key = event.target.getAttribute('data-compare-checkbox');
+      if (event.target.checked) comparisonSelections[key].add(event.target.value);
+      else comparisonSelections[key].delete(event.target.value);
+      renderComparisonSummary();
+      renderComparisonGroups();
+      refreshComparedVisuals();
+    });
+  });
+
+  comparisonGroups.querySelectorAll('[data-compare-search]').forEach(input => {
+    input.addEventListener('input', event => {
+      const key = event.target.getAttribute('data-compare-search');
+      const group = comparisonGroups.querySelector(`[data-compare-group="${key}"]`);
+      const term = event.target.value.trim().toLowerCase();
+      group?.querySelectorAll(`[data-compare-option="${key}"]`).forEach(option => {
+        const label = option.getAttribute('data-compare-label') || '';
+        option.classList.toggle('results-hidden', Boolean(term) && !label.includes(term));
+      });
+    });
+  });
+
+  comparisonGroups.querySelectorAll('[data-compare-select-visible]').forEach(button => {
+    button.addEventListener('click', event => {
+      const key = event.target.getAttribute('data-compare-select-visible');
+      const group = comparisonGroups.querySelector(`[data-compare-group="${key}"]`);
+      group?.querySelectorAll(`[data-compare-checkbox="${key}"]`).forEach(input => {
+        if (input.closest('.results-hidden')) return;
+        input.checked = true;
+        comparisonSelections[key].add(input.value);
+      });
+      renderComparisonSummary();
+      renderComparisonGroups();
+      refreshComparedVisuals();
+    });
+  });
+
+  comparisonGroups.querySelectorAll('[data-compare-clear-group]').forEach(button => {
+    button.addEventListener('click', event => {
+      const key = event.target.getAttribute('data-compare-clear-group');
+      comparisonSelections[key]?.clear();
+      renderComparisonSummary();
+      renderComparisonGroups();
+      refreshComparedVisuals();
+    });
+  });
+}
+
+function setComparisonMode(enabled) {
+  comparisonMode = enabled;
+  comparisonPanel?.classList.toggle('active', enabled);
+  comparisonButton?.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+  if (comparisonButton) comparisonButton.textContent = enabled ? 'Hide Comparison' : 'Comparison Mode';
+}
+
+function refreshComparedVisuals() {
+  updateComparisonMeta();
+  renderRoleSummaryLegend();
+  populateRoleDivergenceTypeahead();
+  renderGapPlotlyHeatmap();
+  renderRoleSkillDivergence();
+}
+
+comparisonButton?.addEventListener('click', () => setComparisonMode(!comparisonMode));
+comparisonApplyBtn?.addEventListener('click', () => {
+  refreshComparedVisuals();
+  setComparisonMode(false);
+});
+comparisonClearBtn?.addEventListener('click', () => {
+  comparisonSelections = createEmptyComparisonSelections();
+  renderComparisonSummary();
+  renderComparisonGroups();
+  refreshComparedVisuals();
+});
+
+document.querySelector('[data-tab="heatmapTab"]')?.addEventListener('click', () => {
+  setTimeout(renderGapPlotlyHeatmap, 50);
+});
 document.querySelector('[data-tab="roleDivergenceTab"]')?.addEventListener('click', () => {
   setTimeout(renderRoleSkillDivergence, 50);
 });
-document.getElementById('roleDivergenceSearch')?.addEventListener('input', () => {
+roleSearchInput?.addEventListener('input', () => {
   setTimeout(renderRoleSkillDivergence, 80);
 });
-document.getElementById('roleDivergenceLimit')?.addEventListener('change', renderRoleSkillDivergence);
+roleLimitSelect?.addEventListener('change', renderRoleSkillDivergence);
+
+renderComparisonSummary();
+renderComparisonGroups();
+refreshComparedVisuals();
 </script>
 {% endif %}
 {% endblock %}

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Summary - CurriculumMatch{% endblock %}
+{% block page_title %}Summary{% endblock %}
+
+{% block extra_css %}
+<style>
+.summary-grid {
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:16px;
+  margin-bottom:20px;
+}
+.summary-card {
+  background:var(--surface);
+  border:1px solid var(--rule);
+  border-radius:8px;
+  padding:18px;
+}
+.summary-title {
+  font-family:var(--mono);
+  font-size:10px;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:#9a4a08;
+  margin-bottom:10px;
+}
+.summary-value {
+  font-family:var(--display);
+  font-size:34px;
+  font-weight:800;
+  line-height:1;
+}
+.summary-copy {
+  margin-top:8px;
+  color:var(--muted);
+  font-size:12px;
+}
+.summary-panels {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:16px;
+}
+.summary-list {
+  display:grid;
+  gap:10px;
+}
+.summary-row {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:10px 0;
+  border-bottom:1px solid var(--rule);
+}
+.summary-row:last-child { border-bottom:0; }
+.summary-row strong {
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+@media (max-width:980px) {
+  .summary-grid,
+  .summary-panels { grid-template-columns:1fr 1fr; }
+}
+@media (max-width:760px) {
+  .summary-grid,
+  .summary-panels { grid-template-columns:1fr; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="card mb-6">
+  <div class="section-hd">
+    <h2>Unique Courses and Jobs</h2>
+    <span class="badge badge-gold">Sidebar summary</span>
+  </div>
+  <p class="text-muted">A compact count view for the current curriculum and job-market records stored in the system.</p>
+</section>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="summary-title">Courses</div>
+    <div class="summary-value">{{ summary_counts.courses_total }}</div>
+    <div class="summary-copy">{{ summary_counts.courses_unique_names }} unique course names and {{ summary_counts.courses_unique_codes }} unique course codes.</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-title">Modules</div>
+    <div class="summary-value">{{ summary_counts.modules_total }}</div>
+    <div class="summary-copy">{{ summary_counts.modules_unique_names }} unique module names.</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-title">Jobs</div>
+    <div class="summary-value">{{ summary_counts.jobs_total }}</div>
+    <div class="summary-copy">{{ summary_counts.jobs_unique_titles }} unique job titles.</div>
+  </div>
+  <div class="summary-card">
+    <div class="summary-title">Market Fields</div>
+    <div class="summary-value">{{ summary_counts.jobs_unique_categories }}</div>
+    <div class="summary-copy">{{ summary_counts.jobs_unique_companies }} unique companies across job adverts.</div>
+  </div>
+</div>
+
+<div class="summary-panels">
+  <section class="card">
+    <div class="section-hd"><h2>Top Course Names</h2></div>
+    <div class="summary-list">
+      {% for label, count in top_course_names %}
+      <div class="summary-row"><strong>{{ label }}</strong><span class="badge badge-gray">{{ count }}</span></div>
+      {% empty %}
+      <div class="text-muted">No courses yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd"><h2>Top Job Titles</h2></div>
+    <div class="summary-list">
+      {% for label, count in top_job_titles %}
+      <div class="summary-row"><strong>{{ label }}</strong><span class="badge badge-gray">{{ count }}</span></div>
+      {% empty %}
+      <div class="text-muted">No jobs yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd"><h2>Top Universities</h2></div>
+    <div class="summary-list">
+      {% for label, count in top_universities %}
+      <div class="summary-row"><strong>{{ label }}</strong><span class="badge badge-gray">{{ count }}</span></div>
+      {% empty %}
+      <div class="text-muted">No university names yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="section-hd"><h2>Top Job Categories</h2></div>
+    <div class="summary-list">
+      {% for label, count in top_categories %}
+      <div class="summary-row"><strong>{{ label }}</strong><span class="badge badge-gray">{{ count }}</span></div>
+      {% empty %}
+      <div class="text-muted">No categories yet.</div>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}
