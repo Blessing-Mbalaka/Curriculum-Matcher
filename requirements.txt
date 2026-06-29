@@ -1,4 +1,5 @@
 Django>=4.2,<5.0
+gunicorn>=22,<24
 psycopg2-binary>=2.9
 gensim>=4.3
 numpy>=1.24

@@ -67,6 +67,8 @@ Thumbs.db
 *.sublime-project
 *.sublime-workspace
 
+.agents
+
 # Testing
 .pytest_cache/
 .coverage
