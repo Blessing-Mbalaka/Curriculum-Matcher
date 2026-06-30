@@ -86,6 +86,8 @@ DECISION_TREE_SCORE_WEIGHT=0.10
 TOP_MODULE_MATCH_COUNT=3
 SEMANTIC_EMBED_CHUNK_CHARS=3500
 SEMANTIC_EMBED_MAX_CHUNKS=12
+SEMANTIC_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+OLLAMA_EMBED_MODEL=nomic-embed-text
 
 # TinyLlama / Ollama
 TINYLLAMA_MODEL=tinyllama
@@ -333,6 +335,27 @@ ollama run tinyllama "Say hello in one sentence."
 ### Verify Django can use it
 
 Because your `.env` already points these endpoints to `127.0.0.1:11434`, the app should call the local Ollama server automatically once it is running.
+
+To verify the embedding backend specifically, run:
+
+```bash
+cd ~/projects/Curriculum-Matcher
+source .venv/bin/activate
+python manage.py check_embedding_backend --require-embedding --skip-checks
+```
+
+Or use the repo helper script:
+
+```bash
+cd ~/projects/Curriculum-Matcher
+bash scripts/ensure_embeddings_ubuntu.sh
+```
+
+If that command exits with a Word2Vec fallback warning, one of these is usually true:
+
+- Ollama is not running on `127.0.0.1:11434`
+- `nomic-embed-text` has not been pulled on the VPS
+- the server cannot load `sentence-transformers/all-MiniLM-L6-v2`
 
 You can test the verification flow with:
 

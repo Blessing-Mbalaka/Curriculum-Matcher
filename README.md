@@ -203,6 +203,33 @@ This lets the Docker container call Ollama running on your Windows host without 
 - Pull the model you want to use, for example `ministral-3:3b`.
 - If you do not need Ollama features, the rest of the app can still run.
 
+### Embedding backend check
+
+Semantic similarity prefers embeddings in this order:
+
+1. `OLLAMA_EMBED_MODEL` via Ollama
+2. `SEMANTIC_MODEL_NAME` via `sentence-transformers`
+3. Word2Vec fallback
+
+If the server says `No embedding model available`, run:
+
+```bash
+python manage.py check_embedding_backend --require-embedding --skip-checks
+```
+
+On Ubuntu VPS deployments, you can also use the helper script:
+
+```bash
+bash scripts/ensure_embeddings_ubuntu.sh
+```
+
+That script:
+
+- loads `.env` and `.venv` when present
+- checks whether Ollama is reachable
+- pulls the configured Ollama embedding model when the `ollama` CLI is installed
+- fails fast if Django still falls back to Word2Vec
+
 ---
 
 ## How background tasks work (no Celery)

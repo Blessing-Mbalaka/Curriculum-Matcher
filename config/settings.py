@@ -143,6 +143,8 @@ DECISION_TREE_SCORE_WEIGHT = float(os.environ.get("DECISION_TREE_SCORE_WEIGHT", 
 TOP_MODULE_MATCH_COUNT = int(os.environ.get("TOP_MODULE_MATCH_COUNT", "3"))
 SEMANTIC_EMBED_CHUNK_CHARS = int(os.environ.get("SEMANTIC_EMBED_CHUNK_CHARS", "3500"))
 SEMANTIC_EMBED_MAX_CHUNKS = int(os.environ.get("SEMANTIC_EMBED_MAX_CHUNKS", "12"))
+SEMANTIC_MODEL_NAME = os.environ.get("SEMANTIC_MODEL_NAME", "sentence-transformers/all-MiniLM-L6-v2")
+OLLAMA_EMBED_MODEL = os.environ.get("OLLAMA_EMBED_MODEL", "nomic-embed-text")
 
 TINYLLAMA_MODEL = os.environ.get("TINYLLAMA_MODEL", "tinyllama")
 TINYLLAMA_ENDPOINT = os.environ.get("TINYLLAMA_ENDPOINT", f"{DEFAULT_OLLAMA_BASE_URL}/api/generate")
