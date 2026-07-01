@@ -210,6 +210,9 @@
     <input class="form-control" name="q" value="{{ current_q }}" placeholder="Search skill, evidence id, entity id, or source">
     <button class="btn btn-primary" type="submit">Filter</button>
   </form>
+  {% if rows_are_capped %}
+  <div class="text-muted text-sm mt-2">Showing the first {{ total_rows }} matching rows from a bounded export sample to keep large datasets responsive.</div>
+  {% endif %}
   <div class="text-muted text-sm">Rows are deduped by source document and entity ID. Inline edits mark a chunk as reviewed and update the stored job/module skill JSON. The Course NER dataset export emits token-level BIO labels from parsed course documents for model training.</div>
 </div>
 
@@ -288,7 +291,14 @@
           <span class="graph-insight-body">The solid line is observed yearly skill evidence. The dotted segment is a simple one-year projection from the current trend, useful for exploration rather than certainty.</span>
         </span>
       </span>
+      <select class="form-control" id="forecastYearFrom" aria-label="Forecast from year" style="width:auto;min-width:140px;">
+        <option value="">Loading years...</option>
+      </select>
+      <select class="form-control" id="forecastYearTo" aria-label="Forecast to year" style="width:auto;min-width:140px;">
+        <option value="">Loading years...</option>
+      </select>
       <button class="btn btn-primary" type="button" id="forecastBtn">Run Time Series Forecast</button>
+      <button class="btn btn-outline" type="button" id="forecastAllBtn">Run All Skills Forecast</button>
     </div>
   </div>
   <div class="skill-plot" id="skillForecastPlot"></div>
@@ -405,10 +415,15 @@
 {% endblock %}
 
 {% block extra_js %}
-{{ rows|json_script:"skillRowsData" }}
+{{ chart_rows|json_script:"skillRowsData" }}
+{{ forecast_seed_payload|json_script:"skillForecastSeedData" }}
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script>
 const skillRows = JSON.parse(document.getElementById('skillRowsData')?.textContent || '[]');
+const forecastSeedData = JSON.parse(document.getElementById('skillForecastSeedData')?.textContent || 'null');
+const forecastApiUrl = "{{ forecast_api_url|escapejs }}";
+const forecastYearFrom = document.getElementById('forecastYearFrom');
+const forecastYearTo = document.getElementById('forecastYearTo');
 const plotConfig = { responsive:true, displayModeBar:false };
 const clusterPlotConfig = {
   responsive:true,
@@ -424,6 +439,8 @@ const plotLayoutBase = {
   font:{ family:'Inter, Arial', size:12, color:'#101010' },
 };
 let clusterResetHandlerAttached = false;
+let forecastDataPromise = null;
+let currentForecastMode = 'top';
 
 function countBy(rows, key) {
   return rows.reduce((acc, row) => {
@@ -642,10 +659,118 @@ function yearForRow(row) {
   return parsed && !Number.isNaN(parsed.getTime()) ? parsed.getFullYear() : null;
 }
 
-function renderSkillForecast() {
+function buildSkillForecastTraces(series, years, nextYear, useWebGl=false) {
+  const palette = ['#111111', '#f58220', '#2f80ed', '#236b35', '#9e2f18', '#706960', '#875692', '#007f5f', '#bc4749', '#577590'];
+  const traceType = useWebGl ? 'scattergl' : 'scatter';
+  return series.flatMap((item, index) => {
+    const color = palette[index % palette.length];
+    return [{
+      type:traceType,
+      mode:'lines+markers',
+      name:item.skill,
+      x:years,
+      y:item.counts,
+      line:{ color, width:useWebGl ? 2 : 3 },
+      marker:{ size:useWebGl ? 5 : 7 },
+      hovertemplate:`${item.skill}<br>Year: %{x}<br>Records: %{y}<extra></extra>`,
+    }, {
+      type:traceType,
+      mode:'lines+markers',
+      name:`${item.skill} forecast`,
+      x:[years[years.length - 1], nextYear],
+      y:[item.counts[item.counts.length - 1], item.forecast],
+      line:{ color, width:2, dash:'dot' },
+      marker:{ size:useWebGl ? 6 : 8, symbol:'diamond' },
+      showlegend:false,
+      hovertemplate:`${item.skill}<br>Forecast year: %{x}<br>Projected records: %{y}<extra></extra>`,
+    }];
+  });
+}
+
+function loadForecastData() {
+  if (!forecastDataPromise) {
+    if (forecastSeedData?.has_data || Array.isArray(forecastSeedData?.years)) {
+      forecastDataPromise = Promise.resolve(forecastSeedData);
+    } else {
+      forecastDataPromise = fetch(forecastApiUrl, { headers:{ Accept:'application/json' } })
+        .then(response => response.json());
+    }
+  }
+  return forecastDataPromise;
+}
+
+function populateForecastYearRanges(years, nextYear) {
+  if (!forecastYearFrom || !forecastYearTo) return;
+  const previousFrom = forecastYearFrom.value;
+  const previousTo = forecastYearTo.value;
+  const options = ['<option value="">Any year</option>'];
+  years.forEach(year => {
+    options.push(`<option value="${year}">${year}</option>`);
+  });
+  if (nextYear) {
+    options.push(`<option value="${nextYear}">${nextYear} forecast</option>`);
+  }
+  const markup = options.join('');
+  forecastYearFrom.innerHTML = markup;
+  forecastYearTo.innerHTML = markup;
+  if ([...forecastYearFrom.options].some(option => option.value === previousFrom)) {
+    forecastYearFrom.value = previousFrom;
+  }
+  if ([...forecastYearTo.options].some(option => option.value === previousTo)) {
+    forecastYearTo.value = previousTo;
+  }
+}
+
+function initializeForecastYearRanges() {
+  if (forecastSeedData?.years?.length) {
+    populateForecastYearRanges(forecastSeedData.years, forecastSeedData.next_year);
+    return;
+  }
+  if (forecastYearFrom) forecastYearFrom.innerHTML = '<option value="">Years load with forecast</option>';
+  if (forecastYearTo) forecastYearTo.innerHTML = '<option value="">Years load with forecast</option>';
+}
+
+function selectedForecastRangeLabel() {
+  const fromYear = forecastYearFrom?.value || '';
+  const toYear = forecastYearTo?.value || '';
+  if (fromYear && toYear) return ` Range ${fromYear} to ${toYear}.`;
+  if (fromYear) return ` From ${fromYear}.`;
+  if (toYear) return ` Up to ${toYear}.`;
+  return '';
+}
+
+function focusedForecastRange(years, nextYear) {
+  const fromYearValue = Number(forecastYearFrom?.value || '');
+  const toYearValue = Number(forecastYearTo?.value || '');
+  if (!fromYearValue && !toYearValue) return null;
+  const minObservedYear = Math.min(...years);
+  const maxVisibleYear = Math.max(nextYear || years[years.length - 1], years[years.length - 1]);
+  let startYear = fromYearValue || minObservedYear;
+  let endYear = toYearValue || maxVisibleYear;
+  if (startYear > endYear) {
+    const swapped = startYear;
+    startYear = endYear;
+    endYear = swapped;
+  }
+  return [
+    Math.max(minObservedYear - 0.25, startYear - 0.35),
+    Math.min(maxVisibleYear + 0.25, endYear + 0.35),
+  ];
+}
+
+async function renderSkillForecast(mode='top') {
+  currentForecastMode = mode;
   const status = document.getElementById('forecastStatus');
-  const datedRows = skillRows.filter(row => yearForRow(row));
-  if (!datedRows.length) {
+  status.textContent = 'Loading forecast...';
+  let forecastData;
+  try {
+    forecastData = await loadForecastData();
+  } catch (_error) {
+    status.textContent = 'Could not load forecast data';
+    return;
+  }
+
+  if (!forecastData?.has_data || !forecastData.years?.length || !forecastData.series?.length) {
     status.textContent = 'No dated rows';
     Plotly.newPlot('skillForecastPlot', [], {
       ...plotLayoutBase,
@@ -656,42 +781,28 @@ function renderSkillForecast() {
     return;
   }
 
-  const topSkills = topCounts(datedRows, 'skill', 6).map(pair => pair[0]);
-  const yearSet = new Set(datedRows.map(row => yearForRow(row)));
-  const years = [...yearSet].sort((a, b) => a - b);
-  const nextYear = Math.max(...years) + 1;
-  const traces = topSkills.flatMap((skill, index) => {
-    const counts = years.map(year => datedRows.filter(row => row.skill === skill && yearForRow(row) === year).length);
-    const slope = counts.length > 1 ? (counts[counts.length - 1] - counts[0]) / (counts.length - 1) : Math.max(1, counts[0] * 0.15);
-    const forecast = Math.max(0, Math.round(counts[counts.length - 1] + slope));
-    const color = ['#111111', '#f58220', '#2f80ed', '#236b35', '#9e2f18', '#706960'][index % 6];
-    return [{
-      type:'scatter',
-      mode:'lines+markers',
-      name:skill,
-      x:years,
-      y:counts,
-      line:{ color, width:3 },
-      marker:{ size:7 },
-      hovertemplate:`${skill}<br>Year: %{x}<br>Records: %{y}<extra></extra>`,
-    }, {
-      type:'scatter',
-      mode:'lines+markers',
-      name:`${skill} forecast`,
-      x:[years[years.length - 1], nextYear],
-      y:[counts[counts.length - 1], forecast],
-      line:{ color, width:2, dash:'dot' },
-      marker:{ size:8, symbol:'diamond' },
-      showlegend:false,
-      hovertemplate:`${skill}<br>Forecast year: %{x}<br>Projected records: %{y}<extra></extra>`,
-    }];
-  });
+  const years = forecastData.years;
+  const nextYear = forecastData.next_year;
+  populateForecastYearRanges(years, nextYear);
+  const selectedSeries = mode === 'all'
+    ? forecastData.series
+    : forecastData.series.slice(0, 6);
+  const traces = buildSkillForecastTraces(selectedSeries, years, nextYear, mode === 'all');
+  const focusedRange = focusedForecastRange(years, nextYear);
+  const focusedYearText = selectedForecastRangeLabel();
 
-  status.textContent = `Forecast to ${nextYear}`;
+  status.textContent = mode === 'all'
+    ? `Forecast to ${nextYear} across ${selectedSeries.length} skills.${focusedYearText}`
+    : `Forecast to ${nextYear}.${focusedYearText}`;
   Plotly.newPlot('skillForecastPlot', traces, {
     ...plotLayoutBase,
-    title:{ text:'Skill Evidence Trend and One-Year Forecast', font:{ size:15 } },
-    xaxis:{ title:'Extraction year', dtick:1, gridcolor:'#f2eee8' },
+    title:{
+      text: mode === 'all'
+        ? 'All-Skills Evidence Trend and One-Year Forecast'
+        : 'Skill Evidence Trend and One-Year Forecast',
+      font:{ size:15 },
+    },
+    xaxis:{ title:'Extraction year', dtick:1, gridcolor:'#f2eee8', range:focusedRange || undefined },
     yaxis:{ title:'Skill records', rangemode:'tozero', gridcolor:'#f2eee8' },
     legend:{ orientation:'h', y:-.22 },
     margin:{ l:58, r:24, t:46, b:92 },
@@ -896,7 +1007,11 @@ function renderSkillClusters() {
   window.resetSkillClusterView = resetClusterView;
 }
 
-document.getElementById('forecastBtn')?.addEventListener('click', renderSkillForecast);
+document.getElementById('forecastBtn')?.addEventListener('click', () => renderSkillForecast('top'));
+document.getElementById('forecastAllBtn')?.addEventListener('click', () => renderSkillForecast('all'));
+forecastYearFrom?.addEventListener('change', () => renderSkillForecast(currentForecastMode));
+forecastYearTo?.addEventListener('change', () => renderSkillForecast(currentForecastMode));
+initializeForecastYearRanges();
 async function checkTrainingDatasetReadiness() {
   const buttons = document.querySelectorAll('[data-training-readiness-button]');
   const statuses = document.querySelectorAll('[data-training-readiness-status]');

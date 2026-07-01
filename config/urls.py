@@ -20,7 +20,7 @@ from dashboard.views import (
     SkillAliasCreateView, SkillAliasReviewView, ReviewedAliasRefreshView, RagChatbotView, RagChatbotApiView,
     DashboardVisualCsvExportView, AnalysisVisualCsvExportView, SummaryView,
     task_status_api, results_json, dashboard_metrics, similarity_network,
-    skill_vector_space, course_skill_training_readiness,
+    skill_vector_space, data_export_forecast_api, course_skill_training_readiness,
 )
 from course_scraper.views import CourseScraperView, StartCourseScrapeView, scrape_status_api
 from methodology.views import MethodologyView
@@ -93,6 +93,7 @@ urlpatterns = [
     path("api/results/", results_json, name="results-json"),
     path("api/dashboard/metrics/", dashboard_metrics, name="dashboard-metrics"),
     path("api/dashboard/network/", similarity_network, name="similarity-network"),
+    path("api/data-export/forecast/", data_export_forecast_api, name="data-export-forecast-api"),
     path("api/data-export/vector-space/", skill_vector_space, name="skill-vector-space-api"),
     path("api/data-export/course-skill-training/readiness/", course_skill_training_readiness, name="course-skill-training-readiness"),
     path("api/course-scraper/status/", scrape_status_api, name="course-scraper-status"),

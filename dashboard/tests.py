@@ -369,6 +369,10 @@ class DashboardVisualDataTests(TestCase):
         self.assertContains(response, "Business Strategy")
         self.assertContains(response, "Strategy Manager")
         self.assertContains(response, "Run Time Series Forecast")
+        self.assertContains(response, "Run All Skills Forecast")
+        self.assertContains(response, "forecastYearFrom")
+        self.assertContains(response, "forecastYearTo")
+        self.assertContains(response, "forecastApiUrl")
         self.assertContains(response, "Semantic Skill Clusters")
         self.assertContains(response, "Full vector view")
         self.assertContains(response, "id=\"fullVectorViewBtn\"")
@@ -418,6 +422,48 @@ class DashboardVisualDataTests(TestCase):
         self.assertNotContains(sector_response, "Strategy module")
         self.assertContains(title_response, "chunk-job-strategy")
         self.assertNotContains(title_response, "Strategy module")
+
+    def test_data_export_forecast_api_uses_full_filtered_year_distribution(self):
+        self.job.category = "Business Strategy"
+        self.job.date_posted = date(2024, 5, 20)
+        self.job.skill_entities = [{
+            "id": "skill-strategy",
+            "chunk_id": "chunk-job-strategy",
+            "skill": "strategy",
+            "label": "SKILL",
+            "tier": "explicit",
+            "skill_type": "business",
+            "source": "ner",
+            "confidence": 0.96,
+            "mention_count": 1,
+        }]
+        self.job.save(update_fields=["category", "date_posted", "skill_entities"])
+        JobAdvert.objects.create(
+            title="Strategy Lead",
+            category="Business Strategy",
+            description="Strategy and planning",
+            date_posted=date(2025, 6, 11),
+            skill_entities=[{
+                "id": "skill-strategy-2025",
+                "chunk_id": "chunk-job-strategy-2025",
+                "skill": "strategy",
+                "label": "SKILL",
+                "tier": "explicit",
+                "skill_type": "business",
+                "source": "ner",
+                "confidence": 0.94,
+                "mention_count": 1,
+            }],
+        )
+
+        response = self.client.get(reverse("data-export-forecast-api"), {"source": "job"})
+        data = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["has_data"])
+        self.assertEqual(data["years"], [2024, 2025])
+        strategy = next(item for item in data["series"] if item["skill"] == "strategy")
+        self.assertEqual(strategy["counts"], [1, 1])
 
     @override_settings(COURSE_SKILL_NER_MIN_EXAMPLES=1)
     def test_course_skill_training_readiness_api_reports_ready_dataset(self):

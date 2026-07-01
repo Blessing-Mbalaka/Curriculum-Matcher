@@ -36,6 +36,7 @@ from analysis.rag_chatbot import (
 )
 from analysis.spacyskillextraction import classify_skill_text
 from analysis.verification import suspicious_job_records, suspicious_module_records
+from dashboard.cache import load_or_build_json_cache
 # Plain functions now — no .delay(), no Celery
 from analysis.tasks import (
     run_gap_analysis_task,
@@ -51,6 +52,11 @@ from analysis.tasks import (
 
 
 STALE_TASK_MINUTES = 10
+DATA_EXPORT_FILTER_SAMPLE_LIMIT = 3000
+DATA_EXPORT_FILTERED_ROW_LIMIT = 1200
+DATA_EXPORT_TABLE_PAGE_SIZE = 200
+VECTOR_SPACE_FILTER_SAMPLE_LIMIT = 1800
+VECTOR_SPACE_GRAPH_ROW_LIMIT = 900
 BUSINESS_TECHNICAL_SKILL_EXCLUSIONS = {
     "c++",
     "c#",
@@ -515,54 +521,140 @@ def entity_row(source_type, source_obj, entity, source_label, parent_label=""):
     return normalized
 
 
-def iter_skill_entity_rows():
-    for job in JobAdvert.objects.order_by("title", "id"):
-        raw_entities = job.skill_entities or job.skills_extracted or []
-        source_label = f"{job.title} @ {job.company}" if job.company else job.title
-        for entity in raw_entities:
-            yield entity_row("job", job, entity, source_label)
+def iter_skill_entity_rows(source_values=None):
+    source_filter = set(source_values or [])
+    include_jobs = not source_filter or "job" in source_filter
+    include_modules = not source_filter or "module" in source_filter
 
-    modules = Module.objects.select_related("course").order_by("course__code", "order", "name", "id")
-    for module in modules:
-        raw_entities = module.skill_entities or module.skills_extracted or []
-        source_label = module.name
-        parent_label = module.course.code or module.course.name
-        for entity in raw_entities:
-            yield entity_row("module", module, entity, source_label, parent_label)
+    if include_jobs:
+        for job in JobAdvert.objects.only(
+            "id", "title", "company", "category", "date_posted", "created_at", "skills_extracted", "skill_entities"
+        ).order_by("title", "id"):
+            raw_entities = job.skill_entities or job.skills_extracted or []
+            source_label = f"{job.title} @ {job.company}" if job.company else job.title
+            for entity in raw_entities:
+                yield entity_row("job", job, entity, source_label)
+
+    if include_modules:
+        modules = Module.objects.select_related("course").only(
+            "id", "name", "created_at", "skills_extracted", "skill_entities",
+            "course__id", "course__code", "course__name",
+        ).order_by("course__code", "order", "name", "id")
+        for module in modules:
+            raw_entities = module.skill_entities or module.skills_extracted or []
+            source_label = module.name
+            parent_label = module.course.code or module.course.name
+            for entity in raw_entities:
+                yield entity_row("module", module, entity, source_label, parent_label)
 
 
-def filtered_skill_entity_rows(request):
-    rows = [
-        row for row in iter_skill_entity_rows()
-        if row.get("skill_type") != "exclude" and row.get("label") != "exclude"
-    ]
+def filtered_skill_entity_rows(request, limit=None):
     source_values = request_multi_values(request, "source")
     skill_type_values = request_multi_values(request, "skill_type")
     sector_values = request_multi_values(request, "sector")
     job_title_values = request_multi_values(request, "job_title")
     label_status_values = request_multi_values(request, "label_status")
     q = request.GET.get("q", "").strip().lower()
-    if source_values:
-        rows = [row for row in rows if row["source_type"] in source_values]
-    if skill_type_values:
-        rows = [row for row in rows if row["skill_type"] in skill_type_values]
-    if sector_values:
-        rows = [row for row in rows if row["sector"] in sector_values]
-    if job_title_values:
-        rows = [row for row in rows if row["job_title"] in job_title_values]
-    if label_status_values:
-        rows = [row for row in rows if row["label_status"] in label_status_values]
-    if q:
-        rows = [
-            row for row in rows
-            if q in row["skill"].lower()
+    rows = []
+    for row in iter_skill_entity_rows(source_values):
+        if row.get("skill_type") == "exclude" or row.get("label") == "exclude":
+            continue
+        if skill_type_values and row["skill_type"] not in skill_type_values:
+            continue
+        if sector_values and row["sector"] not in sector_values:
+            continue
+        if job_title_values and row["job_title"] not in job_title_values:
+            continue
+        if label_status_values and row["label_status"] not in label_status_values:
+            continue
+        if q and not (
+            q in row["skill"].lower()
             or q in row["source_label"].lower()
             or q in row["sector"].lower()
             or q in row["job_title"].lower()
             or q in row["chunk_id"].lower()
             or q in row["id"].lower()
-        ]
+        ):
+            continue
+        rows.append(row)
+        if limit and len(rows) >= limit:
+            break
     return rows
+
+
+def request_refresh_cache(request):
+    return str(request.GET.get("refresh", "")).lower() in {"1", "true", "yes"}
+
+
+def build_data_export_bundle(request):
+    sample_rows = filtered_skill_entity_rows(request, limit=DATA_EXPORT_FILTER_SAMPLE_LIMIT)
+    chart_rows = sample_rows[:DATA_EXPORT_FILTERED_ROW_LIMIT]
+    table_rows = chart_rows[:DATA_EXPORT_TABLE_PAGE_SIZE]
+    type_counts = Counter(row["skill_type"] for row in chart_rows)
+    source_counts = Counter(row["source_type"] for row in chart_rows)
+    job_skill_objects = JobAdvert.objects.exclude(skill_entities=[]).count() or JobAdvert.objects.exclude(skills_extracted=[]).count()
+    module_skill_objects = Module.objects.exclude(skill_entities=[]).count() or Module.objects.exclude(skills_extracted=[]).count()
+    return {
+        "rows": table_rows,
+        "chart_rows": chart_rows,
+        "total_rows": len(sample_rows),
+        "type_counts": dict(type_counts),
+        "source_counts": dict(source_counts),
+        "all_source_counts": {"job": job_skill_objects, "module": module_skill_objects},
+        "all_skill_rows_count": job_skill_objects + module_skill_objects,
+        "rows_are_capped": len(sample_rows) >= DATA_EXPORT_FILTER_SAMPLE_LIMIT,
+        "skill_types": sorted({row["skill_type"] for row in sample_rows if row["skill_type"]}),
+        "label_statuses": sorted({row["label_status"] for row in sample_rows if row["label_status"]}),
+        "sectors": sorted({row["sector"] for row in sample_rows if row["sector"]}),
+        "job_titles": sorted({row["job_title"] for row in sample_rows if row["job_title"]})[:300],
+    }
+
+
+def build_skill_forecast_payload(request):
+    counts = Counter()
+    skill_totals = Counter()
+    years = set()
+
+    for row in filtered_skill_entity_rows(request):
+        year = row.get("extracted_year")
+        skill = (row.get("skill") or "").strip()
+        if not year or not skill:
+            continue
+        counts[(skill, year)] += 1
+        skill_totals[skill] += 1
+        years.add(year)
+
+    if not years:
+        return {
+            "has_data": False,
+            "years": [],
+            "next_year": None,
+            "series": [],
+        }
+
+    sorted_years = sorted(years)
+    next_year = max(sorted_years) + 1
+    series = []
+    for skill, total in skill_totals.most_common():
+        year_counts = [counts[(skill, year)] for year in sorted_years]
+        if len(year_counts) > 1:
+            slope = (year_counts[-1] - year_counts[0]) / (len(year_counts) - 1)
+        else:
+            slope = max(1, year_counts[0] * 0.15)
+        forecast = max(0, round(year_counts[-1] + slope))
+        series.append({
+            "skill": skill,
+            "total": total,
+            "counts": year_counts,
+            "forecast": forecast,
+        })
+
+    return {
+        "has_data": True,
+        "years": sorted_years,
+        "next_year": next_year,
+        "series": series,
+    }
 
 
 def request_multi_values(request, key):
@@ -936,11 +1028,18 @@ class DataExportView(TemplateView):
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
-        all_rows = list(iter_skill_entity_rows())
-        rows = filtered_skill_entity_rows(self.request)
-        type_counts = Counter(row["skill_type"] for row in rows)
-        source_counts = Counter(row["source_type"] for row in rows)
-        all_source_counts = Counter(row["source_type"] for row in all_rows)
+        bundle, _cache_hit = load_or_build_json_cache(
+            "data_export_bundle",
+            self.request.GET,
+            lambda: build_data_export_bundle(self.request),
+            refresh=request_refresh_cache(self.request),
+        )
+        forecast_seed_payload, _forecast_cache_hit = load_or_build_json_cache(
+            "data_export_forecast",
+            self.request.GET,
+            lambda: build_skill_forecast_payload(self.request),
+            refresh=request_refresh_cache(self.request),
+        )
         current_source = self.request.GET.get("source", "")
         current_skill_type = self.request.GET.get("skill_type", "")
         current_sector = self.request.GET.get("sector", "")
@@ -965,12 +1064,7 @@ class DataExportView(TemplateView):
         }
         export_query = {key: value for key, value in export_query.items() if value}
         ctx.update({
-            "rows": rows[:500],
-            "total_rows": len(rows),
-            "type_counts": type_counts,
-            "source_counts": source_counts,
-            "all_source_counts": all_source_counts,
-            "all_skill_rows_count": len(all_rows),
+            **bundle,
             "current_source": current_source,
             "current_skill_type": current_skill_type,
             "current_sector": current_sector,
@@ -979,34 +1073,32 @@ class DataExportView(TemplateView):
             "current_q": current_q,
             "skill_export_href": f"{reverse('skill-entity-export')}?{urlencode(export_query)}" if export_query else reverse("skill-entity-export"),
             "visual_export_href": f"{reverse('data-export-visual-export')}?{urlencode(export_query)}" if export_query else reverse("data-export-visual-export"),
+            "forecast_api_url": f"{reverse('data-export-forecast-api')}?{urlencode(export_query)}" if export_query else reverse("data-export-forecast-api"),
+            "forecast_seed_payload": forecast_seed_payload,
             "skill_vector_href": f"{reverse('skill-vector-space')}?{urlencode(export_query)}" if export_query else reverse("skill-vector-space"),
             "source_tiles": [
                 {
                     "key": "job",
                     "label": "Job Skills",
-                    "count": all_source_counts.get("job", 0),
+                    "count": bundle["all_source_counts"]["job"],
                     "active": current_source == "job",
                     "href": f"{reverse('data-export')}?{urlencode(job_tile_query)}",
                 },
                 {
                     "key": "module",
                     "label": "Course Skills",
-                    "count": all_source_counts.get("module", 0),
+                    "count": bundle["all_source_counts"]["module"],
                     "active": current_source == "module",
                     "href": f"{reverse('data-export')}?{urlencode(module_tile_query)}",
                 },
                 {
                     "key": "merged",
                     "label": "Merged Skills",
-                    "count": len(all_rows),
+                    "count": bundle["all_skill_rows_count"],
                     "active": not current_source,
                     "href": f"{reverse('data-export')}?{urlencode(tile_query)}" if tile_query else reverse("data-export"),
                 },
             ],
-            "skill_types": sorted({row["skill_type"] for row in all_rows if row["skill_type"]}),
-            "label_statuses": sorted({row["label_status"] for row in all_rows if row["label_status"]}),
-            "sectors": sorted({row["sector"] for row in all_rows if row["sector"]}),
-            "job_titles": sorted({row["job_title"] for row in all_rows if row["job_title"]}),
         })
         return ctx
 
@@ -2960,6 +3052,16 @@ def task_status_api(request, pk):
 
 
 def dashboard_metrics(request):
+    payload, _cache_hit = load_or_build_json_cache(
+        "dashboard_metrics",
+        request.GET,
+        lambda: build_dashboard_metrics_payload(request),
+        refresh=request_refresh_cache(request),
+    )
+    return JsonResponse(payload)
+
+
+def build_dashboard_metrics_payload(request):
     last_run = AnalysisRun.objects.order_by("-created_at").first()
     run_id = request.GET.get("run")
     visual_run = get_object_or_404(AnalysisRun, id=run_id) if run_id else last_run
@@ -2979,7 +3081,7 @@ def dashboard_metrics(request):
     for task in TaskRecord.objects.order_by("-created_at").values("id", "run_name", "status", "progress", "notes")[:8]:
         task["debug_hint"] = task_debug_hint(task.get("notes")) if task["status"] == "FAILURE" else ""
         recent_tasks.append(task)
-    return JsonResponse({
+    return {
         "counts": {
             "courses": Course.objects.count(),
             "modules": sum(c.modules.count() for c in Course.objects.prefetch_related("modules")),
@@ -3003,10 +3105,20 @@ def dashboard_metrics(request):
         "job_skills": job_skills,
         "course_skills": course_skills,
         "recent_tasks": recent_tasks,
-    })
+    }
 
 
 def similarity_network(request):
+    payload, _cache_hit = load_or_build_json_cache(
+        "similarity_network",
+        request.GET,
+        lambda: build_similarity_network_payload(request),
+        refresh=request_refresh_cache(request),
+    )
+    return JsonResponse(payload)
+
+
+def build_similarity_network_payload(request):
     try:
         import networkx as nx
     except ImportError:
@@ -3134,17 +3246,18 @@ def similarity_network(request):
                         "group": "skill-link",
                         "title": f"{r.job.title} requires {entity['skill']}",
                     })
-    return JsonResponse({
+    return {
         "run_id": visual_run.id if visual_run else None,
         "cluster": include_skills,
         "has_visual_data": bool(nodes and edges),
         "nodes": nodes,
         "edges": edges,
-    })
+    }
 
 
 def build_skill_vector_space_payload(request):
-    rows = balanced_skill_vector_rows(filtered_skill_entity_rows(request), request, limit=900)
+    sample_rows = filtered_skill_entity_rows(request, limit=VECTOR_SPACE_FILTER_SAMPLE_LIMIT)
+    rows = balanced_skill_vector_rows(sample_rows, request, limit=VECTOR_SPACE_GRAPH_ROW_LIMIT)
     job_lookup = JobAdvert.objects.in_bulk({
         row["source_id"] for row in rows if row["source_type"] == "job"
     })
@@ -3256,6 +3369,12 @@ def build_skill_vector_space_payload(request):
             "skills": len(skill_context),
             "roots": len([node for node in nodes.values() if node.get("group") != "skill"]),
         },
+        "meta": {
+            "sampled": len(sample_rows) >= VECTOR_SPACE_FILTER_SAMPLE_LIMIT,
+            "sample_limit": VECTOR_SPACE_FILTER_SAMPLE_LIMIT,
+            "graph_row_limit": VECTOR_SPACE_GRAPH_ROW_LIMIT,
+            "filtered_rows": len(rows),
+        },
     }
 
 
@@ -3283,7 +3402,12 @@ def balanced_skill_vector_rows(rows, request, limit=900):
 
 class SkillVectorSpaceCsvExportView(View):
     def get(self, request):
-        payload = build_skill_vector_space_payload(request)
+        payload, _cache_hit = load_or_build_json_cache(
+            "skill_vector_space",
+            request.GET,
+            lambda: build_skill_vector_space_payload(request),
+            refresh=request_refresh_cache(request),
+        )
         response = csv_download_response("skill-vector-space-source.csv")
         writer = csv.writer(response)
         writer.writerow([
@@ -3306,7 +3430,23 @@ class SkillVectorSpaceCsvExportView(View):
 
 
 def skill_vector_space(request):
-    return JsonResponse(build_skill_vector_space_payload(request))
+    payload, _cache_hit = load_or_build_json_cache(
+        "skill_vector_space",
+        request.GET,
+        lambda: build_skill_vector_space_payload(request),
+        refresh=request_refresh_cache(request),
+    )
+    return JsonResponse(payload)
+
+
+def data_export_forecast_api(request):
+    payload, _cache_hit = load_or_build_json_cache(
+        "data_export_forecast",
+        request.GET,
+        lambda: build_skill_forecast_payload(request),
+        refresh=request_refresh_cache(request),
+    )
+    return JsonResponse(payload)
 
 
 def course_skill_training_readiness(request):

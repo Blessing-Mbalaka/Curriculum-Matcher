@@ -920,12 +920,15 @@ function activeFilterSummaryText() {
 
 function renderVectorGraph(data) {
   const hasData = data.has_visual_data && data.nodes.length;
+  const sampledNote = data.meta?.sampled
+    ? ` Showing a fast sample of up to ${data.meta.sample_limit} filtered records.`
+    : '';
   vectorEmpty.classList.toggle('active', !hasData);
   vectorNodeCount.textContent = `${data.counts.nodes} nodes`;
   vectorEdgeCount.textContent = `${data.counts.edges} strands`;
   const comparisonSummary = activeFilterSummaryText();
   vectorStatus.textContent = hasData
-    ? `${advancedMode && comparisonSummary ? `Advanced comparison active. ${comparisonSummary}. ` : ''}${data.counts.roots} roots and ${data.counts.skills} skill nodes. Drag, scroll, and orbit freely.`
+    ? `${advancedMode && comparisonSummary ? `Advanced comparison active. ${comparisonSummary}. ` : ''}${data.counts.roots} roots and ${data.counts.skills} skill nodes. Drag, scroll, and orbit freely.${sampledNote}`
     : 'No skill vector data for the current filters.';
   if (!hasData) {
     currentGraphData = { nodes:[], links:[] };

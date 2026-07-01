@@ -310,6 +310,39 @@ python manage.py train_bert_skill_ner --reviewed-only --epochs 5
 
 ---
 
+## Notebook Import
+
+If you want to preprocess jobs in Google Colab or another notebook, export them as JSONL and import them into Django.
+
+Use the helper script:
+
+```bash
+scripts/google_colab_export_embedded_jobs.py
+```
+
+It produces rows containing:
+
+- `skills_extracted`
+- `skill_entities`
+- `vector`
+- optional `cleaned_payload`
+
+Place the exported file in:
+
+```text
+imports/embedded_jobs/jobs_embedded.jsonl
+```
+
+Then import it with:
+
+```bash
+python manage.py import_embedded_jobs imports/embedded_jobs/jobs_embedded.jsonl --run-analysis --max-jobs 300
+```
+
+That import path updates `JobAdvert` rows directly and can queue a fresh analysis run for dashboard data.
+
+---
+
 ## Dependencies
 
 ```
